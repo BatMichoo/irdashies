@@ -35,7 +35,7 @@ export function generateMockData(sessionData?: {
   let sessionIdx = 0;
 
   let prevTelemetry = mockTelemetry as unknown as Telemetry;
-  
+
   // Demo mode: Simulate RPM and gear changes for Mazda MX-5
   let demoRpm = 2000;
   let demoGear = 1;
@@ -53,7 +53,7 @@ export function generateMockData(sessionData?: {
   return {
     onTelemetry: (callback: (value: Telemetry) => void) => {
       telemetryCallbacks.add(callback);
-      
+
       // Start interval only once
       if (!telemetryInterval) {
         telemetryInterval = setInterval(() => {
@@ -63,7 +63,7 @@ export function generateMockData(sessionData?: {
           if (!t) {
             const throttleValue = prevTelemetry.Throttle.value[0];
             const brakeValue = prevTelemetry.Brake.value[0];
-            
+
             // Simulate RPM and gear changes for demo mode
             // Check if we're at or above shift RPM
             if (demoRpm >= shiftRpm) {
@@ -92,21 +92,24 @@ export function generateMockData(sessionData?: {
             const FUEL_START = 45.0;
             const FUEL_PER_LAP = 2.2;
             const LAP_DISTANCE_INC = 0.0007; // Increment per tick for ~24s lap at 60Hz (fast mock lap)
-            const SESSION_TIME_INC = 1/60; // Seconds per tick
+            const SESSION_TIME_INC = 1 / 60; // Seconds per tick
 
             // Initialize state if not present on prevTelemetry (using existing fields as state holders if needed, or just vars)
             // leveraging global vars defined outside this scope would be cleaner but for now extending the closure vars
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             if (typeof (prevTelemetry as any)._mockState === 'undefined') {
-               (prevTelemetry as any)._mockState = {
-                 fuelLevel: FUEL_START,
-                 lapDistPct: 0.1, // Start a bit into the lap
-                 currentLap: 3,
-                 sessionTime: 600.0, // Start 10 mins in
-                 sessionLaps: 15,
-                 sessionLapsRemain: 12
-               };
+              // eslint-disable-next-line @typescript-eslint/no-explicit-any
+              (prevTelemetry as any)._mockState = {
+                fuelLevel: FUEL_START,
+                lapDistPct: 0.1, // Start a bit into the lap
+                currentLap: 3,
+                sessionTime: 600.0, // Start 10 mins in
+                sessionLaps: 15,
+                sessionLapsRemain: 12,
+              };
             }
-            
+
+            // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const state = (prevTelemetry as any)._mockState;
 
             // Update Lap Distance
@@ -116,20 +119,26 @@ export function generateMockData(sessionData?: {
             if (state.lapDistPct >= 1.0) {
               state.lapDistPct = 0.0;
               state.currentLap += 1;
-              state.sessionLapsRemain = Math.max(0, state.sessionLapsRemain - 1);
+              state.sessionLapsRemain = Math.max(
+                0,
+                state.sessionLapsRemain - 1
+              );
             }
 
             // Update Fuel (consume based on distance)
             // Fuel consumed = (Fuel Per Lap) * (Distance Fraction traveled this tick)
             // Since we increment dist by LAP_DISTANCE_INC, we consume that fraction of a lap's fuel
             const fuelConsumedThisTick = FUEL_PER_LAP * LAP_DISTANCE_INC;
-            state.fuelLevel = Math.max(0, state.fuelLevel - fuelConsumedThisTick);
+            state.fuelLevel = Math.max(
+              0,
+              state.fuelLevel - fuelConsumedThisTick
+            );
 
             // Update Session Time
             state.sessionTime += SESSION_TIME_INC;
 
             // --- Fuel Calculator Mock Logic End ---
-            
+
             t = {
               ...prevTelemetry,
               Brake: {
@@ -155,52 +164,52 @@ export function generateMockData(sessionData?: {
               // Inject Fuel Calculator Mock Values
               FuelLevel: {
                 ...prevTelemetry.FuelLevel,
-                value: [state.fuelLevel]
+                value: [state.fuelLevel],
               },
               FuelLevelPct: {
                 ...prevTelemetry.FuelLevelPct,
-                value: [state.fuelLevel / FUEL_TANK_MAX]
+                value: [state.fuelLevel / FUEL_TANK_MAX],
               },
               Lap: {
                 ...prevTelemetry.Lap,
-                value: [state.currentLap]
+                value: [state.currentLap],
               },
               LapDistPct: {
                 ...prevTelemetry.LapDistPct,
-                value: [state.lapDistPct]
+                value: [state.lapDistPct],
               },
               SessionTime: {
                 ...prevTelemetry.SessionTime,
-                value: [state.sessionTime]
+                value: [state.sessionTime],
               },
               SessionLapsRemain: {
                 ...prevTelemetry.SessionLapsRemain,
-                value: [state.sessionLapsRemain]
+                value: [state.sessionLapsRemain],
               },
               SessionTimeRemain: {
-                 ...prevTelemetry.SessionTimeRemain,
-                 value: [state.sessionLapsRemain * 90] // Roughly 1.5 min laps
+                ...prevTelemetry.SessionTimeRemain,
+                value: [state.sessionLapsRemain * 90], // Roughly 1.5 min laps
               },
-               IsOnTrack: {
+              IsOnTrack: {
                 ...prevTelemetry.IsOnTrack, // Ensure this field exists or mock it if missing types might be tricky but assuming existing
-                value: [true]
+                value: [true],
               },
               OnPitRoad: {
-                 ...prevTelemetry.OnPitRoad,
-                 value: [false]
-              }
+                ...prevTelemetry.OnPitRoad,
+                value: [false],
+              },
             };
             prevTelemetry = t;
           }
 
           telemetryIdx = telemetryIdx + 1;
           const data = { ...t };
-          
+
           // Call all registered callbacks
-          telemetryCallbacks.forEach(cb => cb(data));
+          telemetryCallbacks.forEach((cb) => cb(data));
         }, 1000 / 60); // Update at 60Hz for smooth telemetry simulation
       }
-      
+
       // Return unsubscribe function
       return () => {
         telemetryCallbacks.delete(callback);
@@ -213,7 +222,7 @@ export function generateMockData(sessionData?: {
     },
     onSessionData: (callback: (value: Session) => void) => {
       sessionCallbacks.add(callback);
-      
+
       const updateSessionData = () => {
         let s = Array.isArray(sessionInfo)
           ? sessionInfo[sessionIdx % sessionInfo.length]
@@ -223,17 +232,17 @@ export function generateMockData(sessionData?: {
         sessionIdx = sessionIdx + 1;
 
         // Call all registered callbacks
-        sessionCallbacks.forEach(cb => cb(s));
+        sessionCallbacks.forEach((cb) => cb(s));
       };
-      
+
       // Send initial data immediately
       updateSessionData();
-      
+
       // Start interval only once
       if (!sessionInfoInterval) {
         sessionInfoInterval = setInterval(updateSessionData, 2000);
       }
-      
+
       // Return unsubscribe function
       return () => {
         sessionCallbacks.delete(callback);
@@ -246,17 +255,17 @@ export function generateMockData(sessionData?: {
     },
     onRunningState: (callback: (value: boolean) => void) => {
       runningStateCallbacks.add(callback);
-      
+
       // Send initial state immediately
       callback(true);
-      
+
       // Start interval only once
       if (!runningStateInterval) {
         runningStateInterval = setInterval(() => {
-          runningStateCallbacks.forEach(cb => cb(true));
+          runningStateCallbacks.forEach((cb) => cb(true));
         }, 1000);
       }
-      
+
       // Return unsubscribe function
       return () => {
         runningStateCallbacks.delete(callback);

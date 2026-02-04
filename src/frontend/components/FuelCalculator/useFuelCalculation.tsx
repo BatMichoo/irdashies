@@ -454,7 +454,7 @@ export function useFuelCalculation(
   // NEW: Track if the ENTIRE lap was under Green Flag conditions
   // This ensures rolling start formation laps (Yellow) or caution laps are not counted
   const isLapFullyGreenRef = useRef(true);
-  
+
   useEffect(() => {
     if (sessionFlags !== undefined) {
       if (!isGreenFlag(sessionFlags)) {
@@ -590,7 +590,7 @@ export function useFuelCalculation(
         const isGreen = isLapFullyGreenRef.current;
         const isOutlier = !validateLapData(fuelUsed, lapTime, recentLaps);
         const wasTowed = wasTowedDuringLapRef.current;
-        
+
         // Strict Validation: Only count formatted green laps for consumption stats
         // This excludes "Rolling Start" formation laps which are technically Lap 1 but Yellow
         const isValid = !wasTowed && !isOutlier && isGreen;
@@ -651,9 +651,11 @@ export function useFuelCalculation(
       );
 
       if (DEBUG_LOGGING) {
-        console.log(`[FuelCalculator] Starting lap ${nextLap} - ALL projection data cleared`);
+        console.log(
+          `[FuelCalculator] Starting lap ${nextLap} - ALL projection data cleared`
+        );
       }
-      
+
       // Reset Green Flag tracking for the NEW lap
       // Initialize with current flag state (if currently green, start true)
       isLapFullyGreenRef.current = isGreenFlag(sessionFlags);
@@ -681,6 +683,10 @@ export function useFuelCalculation(
     addLapData,
     updateLapCrossing,
     updateLapDistPct,
+    sessionNum,
+    storedTrackId,
+    storedCarName,
+    settings?.enableStorage,
   ]);
 
   // Track Max Qualifying Consumption
@@ -943,18 +949,20 @@ export function useFuelCalculation(
       // Emergency Live Estimation (First Lap)
       // Allow early estimation if we have traveled at least 5% of the lap and used some fuel
       if (currentLapUsage > 0 && (lapDistPct || 0) > 0.05) {
-         let liveProj = currentLapUsage / (lapDistPct || 1);
-         // Loose sanity clamps (0.5L to 20L per lap)
-         liveProj = Math.max(0.5, Math.min(20.0, liveProj));
-         
-         avgFuelPerLapBase = liveProj;
-         avgFuelPerLapForConsumption = liveProj;
-         
-         if (DEBUG_LOGGING) {
-            console.log(`[FuelCalculator] Using LIVE estimation: ${liveProj.toFixed(3)} L/Lap`);
-         }
+        let liveProj = currentLapUsage / (lapDistPct || 1);
+        // Loose sanity clamps (0.5L to 20L per lap)
+        liveProj = Math.max(0.5, Math.min(20.0, liveProj));
+
+        avgFuelPerLapBase = liveProj;
+        avgFuelPerLapForConsumption = liveProj;
+
+        if (DEBUG_LOGGING) {
+          console.log(
+            `[FuelCalculator] Using LIVE estimation: ${liveProj.toFixed(3)} L/Lap`
+          );
+        }
       } else {
-         return null;
+        return null;
       }
     }
 
@@ -1480,7 +1488,6 @@ export function useFuelCalculation(
 
     return result;
   }, [
-    sessionState,
     sessionNum,
     fuelLevel,
     fuelLevelPct,
@@ -1493,7 +1500,6 @@ export function useFuelCalculation(
     driverCarFuelMaxLtr,
     driverCarMaxFuelPct,
     safetyMargin,
-    lapHistorySize,
     lapStartFuel,
     settings,
     qualifyConsumption,

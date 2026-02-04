@@ -1,8 +1,14 @@
 import { app } from 'electron';
-import { iRacingSDKSetup, getCurrentBridge } from './app/bridge/iracingSdk/setup';
+import {
+  iRacingSDKSetup,
+  getCurrentBridge,
+} from './app/bridge/iracingSdk/setup';
 import { getOrCreateDefaultDashboard } from './app/storage/dashboards';
 import { setupTaskbar } from './app';
-import { publishDashboardUpdates, dashboardBridge } from './app/bridge/dashboard/dashboardBridge';
+import {
+  publishDashboardUpdates,
+  dashboardBridge,
+} from './app/bridge/dashboard/dashboardBridge';
 import { setupPitLaneBridge } from './app/bridge/pitLaneBridge';
 import { TelemetrySink } from './app/bridge/iracingSdk/telemetrySink';
 import { OverlayManager } from './app/overlayManager';
@@ -41,20 +47,33 @@ app.on('ready', async () => {
   // Initialize Fuel Database and register IPC handlers as soon as possible
   const fuelDb = new FuelDatabase();
 
-  ipcMain.handle('fuel:getHistoricalLaps', (_, trackId: string | number, carName: string) => {
-    console.log(`[Main] Fetching historical laps for ${carName} at track ${trackId}`);
-    return fuelDb.getLaps(trackId, carName);
-  });
+  ipcMain.handle(
+    'fuel:getHistoricalLaps',
+    (_, trackId: string | number, carName: string) => {
+      console.log(
+        `[Main] Fetching historical laps for ${carName} at track ${trackId}`
+      );
+      return fuelDb.getLaps(trackId, carName);
+    }
+  );
 
-  ipcMain.handle('fuel:saveLap', (_, trackId: string | number, carName: string, lap: FuelLapData) => {
-    console.log(`[Main] Saving lap ${lap.lapNumber} for ${carName} at track ${trackId}`);
-    return fuelDb.saveLap(trackId, carName, lap);
-  });
+  ipcMain.handle(
+    'fuel:saveLap',
+    (_, trackId: string | number, carName: string, lap: FuelLapData) => {
+      console.log(
+        `[Main] Saving lap ${lap.lapNumber} for ${carName} at track ${trackId}`
+      );
+      return fuelDb.saveLap(trackId, carName, lap);
+    }
+  );
 
-  ipcMain.handle('fuel:clearHistory', (_, trackId: string | number, carName: string) => {
-    console.log(`[Main] Clearing history for ${carName} at track ${trackId}`);
-    return fuelDb.clearLaps(trackId, carName);
-  });
+  ipcMain.handle(
+    'fuel:clearHistory',
+    (_, trackId: string | number, carName: string) => {
+      console.log(`[Main] Clearing history for ${carName} at track ${trackId}`);
+      return fuelDb.clearLaps(trackId, carName);
+    }
+  );
 
   ipcMain.handle('fuel:clearAllHistory', () => {
     console.log('[Main] Received fuel:clearAllHistory request');
@@ -68,24 +87,37 @@ app.on('ready', async () => {
     }
   });
 
-  ipcMain.handle('fuel:getQualifyMax', (_, trackId: string | number, carName: string) => {
-    console.log(`[Main] Fetching QualifyMax for ${carName} at track ${trackId}`);
-    return fuelDb.getQualifyMax(trackId, carName);
-  });
+  ipcMain.handle(
+    'fuel:getQualifyMax',
+    (_, trackId: string | number, carName: string) => {
+      console.log(
+        `[Main] Fetching QualifyMax for ${carName} at track ${trackId}`
+      );
+      return fuelDb.getQualifyMax(trackId, carName);
+    }
+  );
 
-  ipcMain.handle('fuel:saveQualifyMax', (_, trackId: string | number, carName: string, val: number | null) => {
-    console.log(`[Main] Saving QualifyMax (${val}) for ${carName} at track ${trackId}`);
-    return fuelDb.saveQualifyMax(trackId, carName, val);
-  });
+  ipcMain.handle(
+    'fuel:saveQualifyMax',
+    (_, trackId: string | number, carName: string, val: number | null) => {
+      console.log(
+        `[Main] Saving QualifyMax (${val}) for ${carName} at track ${trackId}`
+      );
+      return fuelDb.saveQualifyMax(trackId, carName, val);
+    }
+  );
 
   let currentLogPath: string | null = null;
-  
+
   ipcMain.handle('fuel:startNewLog', () => {
     currentLogPath = null;
-    console.log('[Main] Log rotation requested. Next log will be in a new file.');
+    console.log(
+      '[Main] Log rotation requested. Next log will be in a new file.'
+    );
     return Promise.resolve();
   });
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ipcMain.handle('fuel:logData', (_, data: any) => {
     if (!currentLogPath) {
       const logsDir = path.join(app.getPath('userData'), 'logs');
@@ -97,24 +129,31 @@ app.on('ready', async () => {
           return;
         }
       }
-      
+
       const now = new Date();
       // Format: fuel_YYYY-MM-DD_HH-mm-ss-ms.log
-      const dateStr = now.getFullYear() + '-' + 
-                      String(now.getMonth() + 1).padStart(2, '0') + '-' + 
-                      String(now.getDate()).padStart(2, '0') + '_' + 
-                      String(now.getHours()).padStart(2, '0') + '-' + 
-                      String(now.getMinutes()).padStart(2, '0') + '-' + 
-                      String(now.getSeconds()).padStart(2, '0') + '-' +
-                      String(now.getMilliseconds()).padStart(3, '0');
-                      
+      const dateStr =
+        now.getFullYear() +
+        '-' +
+        String(now.getMonth() + 1).padStart(2, '0') +
+        '-' +
+        String(now.getDate()).padStart(2, '0') +
+        '_' +
+        String(now.getHours()).padStart(2, '0') +
+        '-' +
+        String(now.getMinutes()).padStart(2, '0') +
+        '-' +
+        String(now.getSeconds()).padStart(2, '0') +
+        '-' +
+        String(now.getMilliseconds()).padStart(3, '0');
+
       let potentialPath = path.join(logsDir, `fuel_${dateStr}.log`);
-      
+
       // Ensure uniqueness (though ms precision makes collision extremely unlikely)
       let counter = 1;
       while (fs.existsSync(potentialPath)) {
-          potentialPath = path.join(logsDir, `fuel_${dateStr}_${counter}.log`);
-          counter++;
+        potentialPath = path.join(logsDir, `fuel_${dateStr}_${counter}.log`);
+        counter++;
       }
 
       currentLogPath = potentialPath;
@@ -123,7 +162,7 @@ app.on('ready', async () => {
 
     const timestamp = new Date().toISOString();
     const logEntry = `[${timestamp}] ${JSON.stringify(data)}\n`;
-    
+
     try {
       fs.appendFileSync(currentLogPath, logEntry);
     } catch (err) {
