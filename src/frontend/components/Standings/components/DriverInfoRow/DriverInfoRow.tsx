@@ -53,8 +53,7 @@ interface DriverRowInfoProps {
   onPitRoad?: boolean;
   onTrack?: boolean;
   radioActive?: boolean;
-  isLapped?: boolean;
-  isLappingAhead?: boolean;
+  lapDiff?: number;
   hidden?: boolean;
   flairId?: number;
   tireCompound?: number;
@@ -169,8 +168,7 @@ export const DriverInfoRow = memo((props: DriverRowInfoProps) => {
     onPitRoad,
     onTrack,
     radioActive,
-    isLapped,
-    isLappingAhead,
+    lapDiff,
     hidden,
     flairId,
     tireCompound,
@@ -238,6 +236,53 @@ export const DriverInfoRow = memo((props: DriverRowInfoProps) => {
     if (!numLapDeltasToShow) return null;
     return Array.from({ length: numLapDeltasToShow }, (_, index) => index);
   }, [numLapDeltasToShow]);
+
+  const rowStyleClasses = useMemo(() => {
+    const isDimmed = !onTrack || onPitRoad;
+    const opacityClass = isDimmed ? 'opacity-75' : '';
+
+    if (isPlayer) {
+      return {
+        text: `text-amber-300`,
+        bg: 'bg-yellow-500/20 text-sm',
+      };
+    }
+
+    const bg = 'odd:bg-slate-800/70 even:bg-slate-900/70 text-sm';
+    const style = {
+      text: '',
+      bg,
+    };
+
+    if (lapDiff !== undefined && lapDiff !== 0) {
+      if (lapDiff <= -2) style.text = `text-blue-500 ${opacityClass}`;
+      // bg: 'odd:bg-blue-800/45 even:bg-blue-900/30 text-sm',
+      // bg: 'odd:bg-slate-800/70 even:bg-slate-900/70 text-sm',
+      if (lapDiff === -1)
+        return {
+          text: `text-blue-300 ${opacityClass}`,
+          // bg: 'odd:bg-blue-500/40 even:bg-blue-700/40 text-sm',
+          bg: 'odd:bg-slate-800/70 even:bg-slate-900/70 text-sm',
+        };
+      if (lapDiff >= 2)
+        return {
+          text: `text-red-500 ${opacityClass}`,
+          // bg: 'odd:bg-red-800/45 even:bg-red-900/30 text-sm',
+          bg: 'odd:bg-slate-800/70 even:bg-slate-900/70 text-sm',
+        };
+      if (lapDiff === 1)
+        return {
+          text: `text-red-300 ${opacityClass}`,
+          // bg: 'odd:bg-red-500/40 even:bg-red-700/40 text-sm',
+          bg: 'odd:bg-slate-800/70 even:bg-slate-900/70 text-sm',
+        };
+    }
+
+    return {
+      text: isDimmed ? `text-white ${opacityClass}` : 'text-white',
+      bg: 'odd:bg-slate-800/70 even:bg-slate-900/70 text-sm',
+    };
+  }, [isPlayer, lapDiff, onTrack, onPitRoad]);
 
   const columnDefinitions = useMemo(() => {
     const columns = [
@@ -652,13 +697,8 @@ export const DriverInfoRow = memo((props: DriverRowInfoProps) => {
     <tr
       key={carIdx}
       className={[
-        !onTrack || onPitRoad ? 'text-white/60' : '',
-        isPlayer ? 'text-amber-300' : '',
-        isPlayer
-          ? 'bg-yellow-500/20'
-          : 'odd:bg-slate-800/70 even:bg-slate-900/70 text-sm',
-        !isPlayer && isLapped ? 'text-blue-400' : '',
-        !isPlayer && isLappingAhead ? 'text-red-400' : '',
+        rowStyleClasses.bg,
+        rowStyleClasses.text,
         hidden ? 'invisible' : '',
       ].join(' ')}
     >

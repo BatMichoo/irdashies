@@ -195,17 +195,9 @@ export const useDriverStandings = () => {
 
       const carState = carStatesByCarIdx.get(driver.carIdx);
 
-      let lappedState: 'ahead' | 'behind' | 'same' | undefined = undefined;
-      if (sessionType === 'Race') {
-        const lapDiff = Math.round(
-          driverPos.lapNum +
-            driverPos.lapDstPct -
-            (playerLap + playerLapDistPct)
-        );
-        if (lapDiff > 0) lappedState = 'ahead';
-        if (lapDiff < 0) lappedState = 'behind';
-        if (lapDiff === 0) lappedState = 'same';
-      }
+      const lapDiff = Math.round(
+        driverPos.lapNum + driverPos.lapDstPct - (playerLap + playerLapDistPct)
+      );
 
       // If the driver is not in the standings, use the qualifying position
       let classPosition: number | undefined = driverPos.classPosition;
@@ -243,7 +235,7 @@ export const useDriverStandings = () => {
         carIdx: driver.carIdx,
         position: driverPos.position,
         lap: driverPos.lapNum,
-        lappedState,
+        lapDiff,
         classPosition,
         delta: driverPos.delta,
         isPlayer: playerCarIdx === driver.carIdx,

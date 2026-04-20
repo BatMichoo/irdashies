@@ -125,14 +125,28 @@ export const IsPlayer: Story = {
 export const IsLapped: Story = {
   args: {
     ...Primary.args,
-    isLapped: true,
+    lapDiff: -1,
+  },
+};
+
+export const IsMultiLapped: Story = {
+  args: {
+    ...Primary.args,
+    lapDiff: -2,
   },
 };
 
 export const IsLappingAhead: Story = {
   args: {
     ...Primary.args,
-    isLappingAhead: true,
+    lapDiff: 1,
+  },
+};
+
+export const IsMultiLappingAhead: Story = {
+  args: {
+    ...Primary.args,
+    lapDiff: 2,
   },
 };
 
@@ -281,7 +295,7 @@ const Relative = () => {
       onPitRoad: false,
       onTrack: true,
       radioActive: false,
-      lappedState: undefined,
+      lapDiff: 0,
       tireCompound: 0,
       lastPitLap: 0,
       currentSessionType,
@@ -309,7 +323,7 @@ const Relative = () => {
       onPitRoad: false,
       onTrack: true,
       radioActive: false,
-      lappedState: 'ahead',
+      lapDiff: 1,
       tireCompound: 1,
       lastPitLap: 0,
       currentSessionType,
@@ -337,7 +351,7 @@ const Relative = () => {
       onPitRoad: false,
       onTrack: true,
       radioActive: false,
-      lappedState: 'same',
+      lapDiff: 0,
       tireCompound: 1,
       lastPitLap: 0,
       currentSessionType,
@@ -363,7 +377,7 @@ const Relative = () => {
       onPitRoad: false,
       onTrack: true,
       radioActive: false,
-      lappedState: 'same',
+      lapDiff: 0,
       tireCompound: 1,
       lastPitLap: 15,
       currentSessionType,
@@ -389,7 +403,7 @@ const Relative = () => {
       onPitRoad: false,
       onTrack: true,
       radioActive: false,
-      lappedState: 'behind',
+      lapDiff: -1,
       tireCompound: 1,
       lastPitLap: 0,
       currentSessionType,
@@ -415,7 +429,7 @@ const Relative = () => {
       onPitRoad: true,
       onTrack: true,
       radioActive: false,
-      lappedState: 'same',
+      lapDiff: 0,
       tireCompound: 1,
       lastPitLap: 0,
       currentSessionType,
@@ -470,8 +484,7 @@ const Relative = () => {
               onPitRoad={result.onPitRoad}
               onTrack={result.onTrack}
               radioActive={result.radioActive}
-              isLapped={result.lappedState === 'behind'}
-              isLappingAhead={result.lappedState === 'ahead'}
+              lapDiff={result.lapDiff}
               flairId={result.driver?.flairId}
               tireCompound={result.tireCompound}
               license={result.driver?.license}

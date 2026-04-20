@@ -152,7 +152,7 @@ const RelativeWithReorderableConfig = () => {
       onPitRoad: false,
       onTrack: true,
       radioActive: false,
-      lappedState: undefined,
+      lapDiff: 0,
       tireCompound: 0,
       lastPitLap: 0,
       currentSessionType: currentSessionType,
@@ -179,7 +179,7 @@ const RelativeWithReorderableConfig = () => {
       onPitRoad: false,
       onTrack: true,
       radioActive: false,
-      lappedState: 'ahead',
+      lapDiff: 1,
       tireCompound: 1,
       lastPitLap: 0,
       currentSessionType: currentSessionType,
@@ -210,7 +210,7 @@ const RelativeWithReorderableConfig = () => {
       onPitRoad: false,
       onTrack: true,
       radioActive: false,
-      lappedState: 'same',
+      lapDiff: 0,
       tireCompound: 1,
       lastPitLap: 0,
       currentSessionType: currentSessionType,
@@ -239,7 +239,7 @@ const RelativeWithReorderableConfig = () => {
       onPitRoad: false,
       onTrack: true,
       radioActive: false,
-      lappedState: 'same',
+      lapDiff: 0,
       tireCompound: 1,
       lastPitLap: 15,
       currentSessionType: currentSessionType,
@@ -268,7 +268,7 @@ const RelativeWithReorderableConfig = () => {
       onPitRoad: false,
       onTrack: true,
       radioActive: false,
-      lappedState: 'behind',
+      lapDiff: -1,
       tireCompound: 1,
       lastPitLap: 0,
       currentSessionType: currentSessionType,
@@ -297,7 +297,7 @@ const RelativeWithReorderableConfig = () => {
       onPitRoad: true,
       onTrack: true,
       radioActive: false,
-      lappedState: 'same',
+      lapDiff: 0,
       tireCompound: 1,
       lastPitLap: 0,
       currentSessionType: currentSessionType,
@@ -470,8 +470,7 @@ const RelativeWithReorderableConfig = () => {
                 onPitRoad={result.onPitRoad}
                 onTrack={result.onTrack}
                 radioActive={result.radioActive}
-                isLapped={result.lappedState === 'behind'}
-                isLappingAhead={result.lappedState === 'ahead'}
+                lapDiff={result.lapDiff}
                 flairId={result.driver?.flairId}
                 tireCompound={result.tireCompound}
                 carId={result.carId}

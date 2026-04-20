@@ -24,7 +24,7 @@ export interface Standings {
   position?: number;
   classPosition?: number;
   lap?: number;
-  lappedState?: 'ahead' | 'behind' | 'same';
+  lapDiff?: number;
   delta?: number;
   gap?: Gap;
   interval?: number;
