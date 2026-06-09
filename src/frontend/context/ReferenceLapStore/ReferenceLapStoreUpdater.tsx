@@ -7,7 +7,8 @@ import { Driver } from '@irdashies/types';
 import logger from '@irdashies/utils/logger';
 
 function getClassList(drivers: Driver[], paceCarIdx: number): number[] {
-  const paceCarClassId = drivers[paceCarIdx]?.CarClassID ?? -1;
+  const paceCarClassId =
+    drivers.find((d) => d.CarIdx === paceCarIdx)?.CarClassID ?? -1;
   const classList = Array.from(new Set(drivers.map((d) => d.CarClassID)))
     .filter((id) => id !== paceCarClassId && id > 0)
     .sort((a, b) => a - b);
@@ -43,7 +44,14 @@ export const useReferenceLapStoreUpdater = (bridge: ReferenceLapBridge) => {
 
       const subSessionId = session.WeekendInfo.SubSessionID;
       const paceCarIdx = session.DriverInfo.PaceCarIdx;
-      const drivers = session.DriverInfo.Drivers || [];
+      const rawDrivers = session.DriverInfo.Drivers || [];
+      // Deduplicate drivers by CarIdx to avoid multiple processing of the same car index in team based sessions
+      const seen = new Set<number>();
+      const drivers = rawDrivers.filter((d) => {
+        if (seen.has(d.CarIdx)) return false;
+        seen.add(d.CarIdx);
+        return true;
+      });
 
       // Calculate track length in meters
       const lengthStr = session.WeekendInfo.TrackLength;

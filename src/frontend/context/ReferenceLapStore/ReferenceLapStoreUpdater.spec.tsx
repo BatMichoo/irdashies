@@ -204,4 +204,38 @@ describe('useReferenceLapStoreUpdater', () => {
       [10, 20] // classList - should only have 10 and 20
     );
   });
+
+  it('should correctly identify and filter out pace car class ID in team racing (where pace car is not at index 0)', () => {
+    const initializeSpy = vi.spyOn(
+      useReferenceLapStore.getState(),
+      'initialize'
+    );
+    renderHook(() => useReferenceLapStoreUpdater(mockBridge));
+
+    useSessionStore.setState({
+      session: {
+        WeekendInfo: {
+          SeriesID: 1,
+          TrackID: 2,
+          SubSessionID: 3,
+          TrackLength: '5 km',
+        },
+        DriverInfo: {
+          PaceCarIdx: 9, // Pace car CarIdx is 9
+          Drivers: [
+            { CarIdx: 1, CarClassID: 10, TeamID: -100 }, // Team driver at index 0
+            { CarIdx: 9, CarClassID: 99, TeamID: 0 }, // Pace car at index 1
+          ],
+        },
+      } as unknown as Session,
+    });
+
+    expect(initializeSpy).toHaveBeenCalledWith(
+      expect.anything(), // bridge
+      1, // seriesId
+      2, // trackId
+      5000, // trackLength
+      [10] // classList - should filter out pace car class 99 and keep class 10
+    );
+  });
 });
