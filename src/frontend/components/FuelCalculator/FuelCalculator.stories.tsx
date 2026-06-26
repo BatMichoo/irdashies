@@ -167,7 +167,6 @@ export const HorizontalLayout: Story = {
 // Helper component to populate fuel store with mock lap data
 const MockFuelDataProvider = ({ children }: { children: React.ReactNode }) => {
   const addLapData = useFuelStore((state) => state.addLapData);
-  const updateLapCrossing = useFuelStore((state) => state.updateLapCrossing);
   const clearAllData = useFuelStore((state) => state.clearAllData);
 
   useEffect(() => {
@@ -197,8 +196,14 @@ const MockFuelDataProvider = ({ children }: { children: React.ReactNode }) => {
     mockLaps.forEach((lap) => addLapData(lap));
 
     // Set current lap crossing state
-    updateLapCrossing(0.1, 35.5, 2700, 31, false);
-  }, [addLapData, updateLapCrossing, clearAllData]);
+    useFuelStore.setState({
+      lastLapDistPct: 0.1,
+      lapStartFuel: 35.5,
+      lapCrossingTime: 2700,
+      lastLap: 31,
+      wasOnPitRoad: false,
+    });
+  }, [addLapData, clearAllData]);
 
   return <>{children}</>;
 };

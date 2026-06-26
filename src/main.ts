@@ -22,6 +22,7 @@ import { updateElectronApp } from 'update-electron-app';
 import started from 'electron-squirrel-startup';
 import { Analytics } from './app/analytics';
 import { setupReferenceLapsBridge } from './app/bridge/referenceLapsBridge';
+import { setupReferenceFuelBridge } from './app/bridge/referenceFuelBridge';
 import { setupKeybindingsBridge } from './app/bridge/keybindingsBridge';
 import { setupLogBridge } from './app/bridge/logBridge';
 import { setupPersonalBestLapTimesBridge } from './app/bridge/personalBestLapTimesBridge';
@@ -29,6 +30,7 @@ import {
   validateReferenceLapFile,
   flushReferenceLapsOnShutdown,
 } from './app/storage/referenceLaps';
+import { flushReferenceFuelOnShutdown } from './app/storage/referenceFuel';
 import { setupChromiumFlagsBridge } from './app/bridge/chromiumFlagsBridge';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
@@ -68,6 +70,7 @@ app.on('ready', async () => {
   setupFuelCalculatorBridge();
   setupPitLaneBridge();
   setupReferenceLapsBridge();
+  setupReferenceFuelBridge();
   setupPersonalBestLapTimesBridge();
   setupChromiumFlagsBridge();
 
@@ -106,4 +109,5 @@ app.on('before-quit', () => {
   // Synchronous flush so any pending debounced reference-lap write completes
   // before the process exits.
   flushReferenceLapsOnShutdown();
+  flushReferenceFuelOnShutdown();
 });

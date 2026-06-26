@@ -18,6 +18,8 @@ import type {
   PersonalBestLapBridge,
   ChromiumFlagsBridge,
   ChromiumFlagsType,
+  ReferenceFuel,
+  ReferenceFuelBridge,
 } from '@irdashies/types';
 
 export function exposeBridge() {
@@ -259,6 +261,31 @@ export function exposeBridge() {
       );
     },
   } as ReferenceLapBridge);
+
+  contextBridge.exposeInMainWorld('referenceFuelBridge', {
+    getReferenceFuel: (seriesId: number, trackId: number, classId: number) => {
+      return ipcRenderer.invoke(
+        'referenceFuel:get',
+        seriesId,
+        trackId,
+        classId
+      );
+    },
+    saveReferenceFuel: (
+      seriesId: number,
+      trackId: number,
+      classId: number,
+      fuel: ReferenceFuel
+    ) => {
+      return ipcRenderer.invoke(
+        'referenceFuel:save',
+        seriesId,
+        trackId,
+        classId,
+        fuel
+      );
+    },
+  } as ReferenceFuelBridge);
 
   contextBridge.exposeInMainWorld('keybindingsBridge', {
     getKeybindings: () => ipcRenderer.invoke('keybindings:get'),

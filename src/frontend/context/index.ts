@@ -19,3 +19,6 @@ export * from './PushToPassStore/PushToPassStore';
 export * from './PushToPassStore/PushToPassStoreUpdater';
 export * from './shared';
 export * from './PersonalBestStore/PersonalBestStore';
+export * from './ReferenceFuelStore/ReferenceFuelStore';
+export * from './ReferenceFuelStore/ReferenceFuelStoreUpdater';
+export * from './ReferenceFuelStore/ReferenceFuelStoreProvider';

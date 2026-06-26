@@ -8,6 +8,7 @@ import type {
   KeybindingsBridge,
   GamepadHostBridge,
   ChromiumFlagsBridge,
+  ReferenceFuelBridge,
 } from '@irdashies/types';
 
 declare global {
@@ -17,6 +18,7 @@ declare global {
     pitLaneBridge: PitLaneBridge;
     fuelCalculatorBridge: FuelCalculatorBridge;
     referenceLapsBridge: ReferenceLapBridge;
+    referenceFuelBridge: ReferenceFuelBridge;
     logBridge: LogBridge;
     keybindingsBridge: KeybindingsBridge;
     /** Present only in the hidden WebHID host renderer (src/hidHost.ts). */

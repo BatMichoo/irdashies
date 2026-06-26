@@ -4,14 +4,10 @@
 
 import { describe, it, expect } from 'vitest';
 import {
-  validateLapData,
   calculateWeightedAverage,
   calculateSimpleAverage,
   calculateAvgLapTime,
   findFuelMinMax,
-  findFirstLapNumber,
-  getFullRacingLaps,
-  getGreenFlagLaps,
   litersToGallons,
   gallonsToLiters,
   formatFuel,
@@ -31,39 +27,6 @@ import {
 import type { FuelLapData } from './types';
 
 describe('fuelCalculations', () => {
-  describe('validateLapData', () => {
-    it('should return false for invalid fuel values', () => {
-      expect(validateLapData(0, 100, [])).toBe(false);
-      expect(validateLapData(-1, 100, [])).toBe(false);
-    });
-
-    it('should return false for invalid lap times', () => {
-      expect(validateLapData(2.5, 0, [])).toBe(false);
-      expect(validateLapData(2.5, -1, [])).toBe(false);
-    });
-
-    it('should return true for first laps with no history', () => {
-      expect(validateLapData(2.5, 90, [])).toBe(true);
-      expect(validateLapData(2.5, 90, [mockLap(1, 2.4, 89)])).toBe(true);
-    });
-
-    it('should detect outliers using IQR method', () => {
-      const recentLaps = [
-        mockLap(1, 2.4, 90),
-        mockLap(2, 2.5, 91),
-        mockLap(3, 2.5, 89),
-        mockLap(4, 2.5, 90),
-        mockLap(5, 2.6, 91),
-      ];
-
-      // Mean is 2.5. Tolerance (15%) is 0.375.
-      // Bounds: [2.125, 2.875]
-      expect(validateLapData(2.5, 90, recentLaps)).toBe(true);
-      expect(validateLapData(2.8, 90, recentLaps)).toBe(true);
-      expect(validateLapData(5.0, 90, recentLaps)).toBe(false); // Outlier
-    });
-  });
-
   describe('calculateWeightedAverage', () => {
     it('should return 0 for empty array', () => {
       expect(calculateWeightedAverage([])).toBe(0);
@@ -139,51 +102,6 @@ describe('fuelCalculations', () => {
     });
   });
 
-  describe('findFirstLapNumber', () => {
-    it('should return 0 for empty array', () => {
-      expect(findFirstLapNumber([])).toBe(0);
-    });
-
-    it('should find the lowest lap number', () => {
-      const laps = [
-        mockLap(5, 2.0, 90),
-        mockLap(3, 2.5, 90),
-        mockLap(7, 2.8, 90),
-        mockLap(2, 2.3, 90),
-      ];
-      expect(findFirstLapNumber(laps)).toBe(2);
-    });
-  });
-
-  describe('getFullRacingLaps', () => {
-    it('should filter out out-laps and first lap', () => {
-      const laps = [
-        mockLap(1, 2.0, 90), // First lap - excluded
-        mockLap(2, 2.5, 90, { isOutLap: true }), // Out-lap - excluded
-        mockLap(3, 2.3, 90), // Valid
-        mockLap(4, 2.4, 90), // Valid
-      ];
-      const result = getFullRacingLaps(laps, 1);
-      expect(result.length).toBe(2);
-      expect(result[0].lapNumber).toBe(3);
-      expect(result[1].lapNumber).toBe(4);
-    });
-  });
-
-  describe('getGreenFlagLaps', () => {
-    it('should filter to green flag laps only', () => {
-      const laps = [
-        mockLap(1, 2.0, 90, { isGreenFlag: true }),
-        mockLap(2, 2.5, 90, { isGreenFlag: false }),
-        mockLap(3, 2.3, 90, { isGreenFlag: true }),
-      ];
-      const result = getGreenFlagLaps(laps);
-      expect(result.length).toBe(2);
-      expect(result[0].lapNumber).toBe(1);
-      expect(result[1].lapNumber).toBe(3);
-    });
-  });
-
   describe('unit conversions', () => {
     it('should convert liters to gallons', () => {
       expect(litersToGallons(10)).toBeCloseTo(2.64172, 4);
@@ -236,8 +154,8 @@ describe('fuelCalculations', () => {
 
     it('should handle edge cases', () => {
       expect(detectLapCrossing(0.0, 1.0)).toBe(true);
-      expect(detectLapCrossing(0.1, 0.9)).toBe(true);
       expect(detectLapCrossing(0.09, 0.91)).toBe(true);
+      expect(detectLapCrossing(0.1, 0.9)).toBe(false); // No longer crossing under stricter >0.9 and <0.1 threshold
     });
   });
 
