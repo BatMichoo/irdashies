@@ -3,6 +3,8 @@
  */
 
 import type { FuelLapData } from './types';
+import type { ReferenceFuel } from '@irdashies/types';
+import { getBucketIndex } from '@irdashies/context';
 
 // ============================================================================
 // Constants - Session Flags (defined once at module level)
@@ -199,4 +201,207 @@ export function calculateConfidence(
   if (validLapCount >= HIGH_CONFIDENCE_LAPS) return 'high';
   if (validLapCount >= MEDIUM_CONFIDENCE_LAPS) return 'medium';
   return 'low';
+}
+
+/**
+ * Calculate total fuel required to finish the race
+ */
+export function calculateFuelRequiredToFinish(
+  raceLapsRemaining: number,
+  trackPct: number,
+  fuelConsumption: number,
+  safetyMargin: number
+): number {
+  return (raceLapsRemaining - trackPct) * fuelConsumption + safetyMargin;
+}
+
+/**
+ * Calculate refuel required to finish the race
+ */
+export function calculateRefuelRequired(
+  fuelLevel: number,
+  fuelRequiredToFinish: number
+) {
+  return fuelRequiredToFinish - fuelLevel;
+}
+
+export function calculateStrategy(
+  consumption: number,
+  lapsRemaining: number,
+  lapDistPct: number,
+  fuelLevel: number,
+  safetyMargin: number
+) {
+  if (consumption <= 0)
+    return {
+      laps: NaN,
+      refuel: 0,
+      totalReq: 0,
+      isDeficit: false,
+      isValid: false,
+      hideRefuel: true,
+    };
+
+  // Laps calculation
+  const lapsBasedOnFuel = fuelLevel / consumption;
+
+  // Finish (Fuel at finish) -> This is effectively our BALANCE for coloring
+  const fuelNeeded = calculateFuelRequiredToFinish(
+    lapsRemaining,
+    lapDistPct,
+    consumption,
+    safetyMargin
+  );
+  const balance = calculateRefuelRequired(fuelLevel, fuelNeeded);
+
+  // Logic for Refuel Column:
+  // If Balance > 0 (Deficit): Show POSITIVE amount to ADD.
+  // If Balance <= 0 (Surplus): Show POSITIVE amount EXTRA.
+  const refuelValue = balance > 0 ? balance : Math.abs(balance);
+  const isDeficit = balance > 0;
+
+  return {
+    laps: Number.parseFloat(lapsBasedOnFuel.toFixed(2)), // number
+    refuel: Number.parseFloat(refuelValue.toFixed(2)), // number (absolute value to show)
+    totalReq: Number.parseFloat(fuelNeeded.toFixed(2)), // number
+    isDeficit: isDeficit, // boolean
+    isValid: true,
+    hideRefuel: false,
+  };
+}
+
+/**
+ * Calculate the projected fuel consumption for the current lap using the last lap as reference data
+ */
+export function calculateProjectedLapUsage(
+  lastLap: ReferenceFuel | undefined | null,
+  activeLap: ReferenceFuel | undefined | null,
+  fuelLevel: number,
+  lapDistPct: number,
+  fallbackConsumption: number
+): number {
+  if (!lastLap || lastLap.startFuel <= 0 || lastLap.pointsCount <= 0) {
+    return fallbackConsumption;
+  }
+
+  const lastLapConsumption = lastLap.startFuel - lastLap.finishFuel;
+  if (lastLapConsumption <= 0) {
+    return fallbackConsumption;
+  }
+
+  // 1. Fuel consumed so far on the current lap
+  const fuelConsumedSoFar =
+    activeLap && activeLap.startFuel > 0
+      ? Math.max(activeLap.startFuel - fuelLevel, 0)
+      : 0;
+
+  // 2. Find remaining consumption based on last lap reference using interpolation
+  const interpolatedFuel = interpolateFuelAtPoint(lastLap, lapDistPct);
+
+  const lastLapRemaining =
+    interpolatedFuel !== null
+      ? Math.max(lastLapConsumption - interpolatedFuel, 0)
+      : (1 - lapDistPct) * lastLapConsumption;
+
+  // 3. Projected total consumption (fuel consumed so far + projected remaining)
+  if (activeLap && activeLap.startFuel > 0) {
+    return fuelConsumedSoFar + lastLapRemaining;
+  }
+
+  return lastLapConsumption;
+}
+
+/**
+ * Hermite interpolation helper function
+ */
+function hermiteBasis(
+  t: number,
+  y0: number,
+  y1: number,
+  m0: number,
+  m1: number
+): number {
+  const t2 = t * t;
+  const t3 = t2 * t;
+  const h00 = 2 * t3 - 3 * t2 + 1;
+  const h10 = t3 - 2 * t2 + t;
+  const h01 = -2 * t3 + 3 * t2;
+  const h11 = t3 - t2;
+  return h00 * y0 + h10 * m0 + h01 * y1 + h11 * m1;
+}
+
+/**
+ * Interpolate fuel consumed at a given track percentage
+ */
+export function interpolateFuelAtPoint(
+  lap: ReferenceFuel,
+  targetPct: number
+): number | null {
+  if (lap.pointsCount <= 0 || lap.fuelConsumed.length === 0) {
+    return null;
+  }
+
+  // 1. Normalize the target to find the exact grid key (p0)
+  const key0 = getBucketIndex(targetPct, lap.pointsCount);
+
+  // 2. Calculate the next key (p1)
+  const key1 = getBucketIndex(targetPct + lap.interval, lap.pointsCount);
+
+  // 3. Fast Lookup
+  const p0fuel = lap.fuelConsumed[key0];
+  const p0tangent = lap.tangents[key0];
+  const p0pos = lap.pointPos[key0];
+
+  const p0 = {
+    fuelConsumed: p0fuel,
+    tangent: p0tangent,
+    trackPct: p0pos,
+  };
+
+  const p1fuel = lap.fuelConsumed[key1];
+  const p1tangent = lap.tangents[key1];
+  const p1pos = lap.pointPos[key1];
+
+  const p1 = {
+    fuelConsumed: p1fuel,
+    tangent: p1tangent,
+    trackPct: p1pos,
+  };
+
+  if (
+    p0.fuelConsumed === undefined ||
+    p0.fuelConsumed === -1 ||
+    p0.trackPct === undefined ||
+    p0.trackPct === -1
+  ) {
+    return null;
+  }
+
+  if (
+    p1.fuelConsumed === undefined ||
+    p1.fuelConsumed === -1 ||
+    p1.trackPct === undefined ||
+    p1.trackPct === -1
+  ) {
+    return p0.fuelConsumed;
+  }
+
+  // 4. Hermite Interpolation
+  let h = p1.trackPct - p0.trackPct;
+  let y1 = p1.fuelConsumed;
+
+  // Guard against divide by zero or wrapped points
+  if (h <= 0) {
+    h = 1 - p0.trackPct + p1.trackPct;
+    const lapFuel = lap.startFuel - lap.finishFuel;
+    y1 = p1.fuelConsumed + lapFuel;
+  }
+
+  if (h <= 0) {
+    return p0.fuelConsumed;
+  }
+
+  const t = (targetPct - p0.trackPct) / h;
+
+  return hermiteBasis(t, p0.fuelConsumed, y1, p0.tangent * h, p1.tangent * h);
 }

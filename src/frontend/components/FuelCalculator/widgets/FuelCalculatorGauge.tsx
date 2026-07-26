@@ -92,9 +92,9 @@ export const FuelCalculatorGauge: React.FC<FuelCalculatorWidgetProps> = ({
   const statusColors = getFuelStatusColors(status);
   const gradient = statusColors.bar;
 
-  const fuelString = formatFuel(currentFuel, fuelUnits, 1);
-  const lapsString = displayData.lapsWithFuel.toFixed(1);
-  const tankString = formatFuel(tankCapacity, fuelUnits, 0);
+  const fuelString = formatFuel(currentFuel, fuelUnits, 2);
+  const lapsString = displayData.lapsWithFuel.toFixed(2);
+  const tankString = formatFuel(tankCapacity, fuelUnits, 3);
 
   const paddingClass =
     compactMode === 'ultra' ? '' : compactMode === 'compact' ? 'p-1' : 'p-2';

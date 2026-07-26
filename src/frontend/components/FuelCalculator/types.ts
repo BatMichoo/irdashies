@@ -11,6 +11,8 @@ export type { FuelLapData };
 export interface FuelCalculation {
   /** Current fuel level (liters) */
   fuelLevel: number;
+  /** Current track location percentage (0-1) */
+  lapDistPct: number;
   /** Fuel used on the most recent completed lap (liters) */
   lastLapUsage: number;
   /** Fuel used so far in the current lap (liters) */

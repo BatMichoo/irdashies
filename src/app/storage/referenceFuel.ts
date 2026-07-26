@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import fsp from 'node:fs/promises';
 import path from 'node:path';
 import logger from '../logger';
+import { readData, writeData } from './storage';
 
 const dataPath = app.getPath('userData');
 const filePath = path.join(dataPath, 'referenceFuel.json');
@@ -146,4 +147,33 @@ export const __resetForTests = (): void => {
     writeTimer = null;
   }
   writeInFlight = null;
+};
+
+/**
+ * One-time migration to clear old reference lap data.
+ * This should be removed in a future version.
+ */
+export const validateFuelLapFile = () => {
+  const VERSION = '0.0.0';
+  const VERSION_KEY = 'version';
+  const isCurrent = readData<string>(VERSION_KEY, filePath) === VERSION;
+
+  if (!isCurrent) {
+    if (fs.existsSync(filePath)) {
+      try {
+        fs.unlinkSync(filePath);
+        logger.info('One-time cleanup of referenceLaps.json performed');
+      } catch (error) {
+        logger.error(
+          'Failed to delete referenceLaps.json during initialization:',
+          error
+        );
+      }
+    }
+    try {
+      writeData(VERSION_KEY, VERSION, filePath);
+    } catch (error) {
+      logger.error('Failed to persist version flag:', error);
+    }
+  }
 };

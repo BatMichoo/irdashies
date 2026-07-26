@@ -15,7 +15,7 @@ function getClassList(drivers: Driver[], paceCarIdx: number): number[] {
 }
 
 export const useReferenceFuelStoreUpdater = (bridge: ReferenceFuelBridge) => {
-  const { initialize, completeSession, collectBulkData } =
+  const { initialize, completeSession, collectBulkData, saveAverageLap } =
     useReferenceFuelStore.getState();
 
   const sessionRef = useRef({
@@ -26,12 +26,42 @@ export const useReferenceFuelStoreUpdater = (bridge: ReferenceFuelBridge) => {
     subSessionId: -1,
     drivers: [] as Driver[],
     paceCarIdx: -1,
+    playerCarIdx: -1,
   });
 
   useEffect(() => {
+    const currentSession = sessionRef.current;
+
     const unsubSession = useSessionStore.subscribe((state) => {
       const session = state.session;
-      if (!session) return;
+      const s = sessionRef.current;
+
+      if (!session) {
+        if (
+          s.seriesId !== -1 &&
+          s.playerCarIdx !== -1 &&
+          s.drivers[s.playerCarIdx]
+        ) {
+          logger.info(
+            '[RefFuelStore] Session ended (session is null), saving average lap...'
+          );
+          const player = s.drivers[s.playerCarIdx];
+          const playerClassId = player?.CarClassID ?? -1;
+          saveAverageLap(bridge, s.seriesId, playerClassId);
+        }
+        completeSession();
+        Object.assign(s, {
+          seriesId: -1,
+          trackId: -1,
+          trackLength: -1,
+          sessionNum: -1,
+          subSessionId: -1,
+          drivers: [] as Driver[],
+          paceCarIdx: -1,
+          playerCarIdx: -1,
+        });
+        return;
+      }
 
       const seriesId = session.WeekendInfo.SeriesID;
       const trackId = session.WeekendInfo.TrackID;
@@ -41,13 +71,12 @@ export const useReferenceFuelStoreUpdater = (bridge: ReferenceFuelBridge) => {
       const subSessionId = session.WeekendInfo.SubSessionID;
       const paceCarIdx = session.DriverInfo.PaceCarIdx;
       const drivers = session.DriverInfo.Drivers || [];
+      const playerCarIdx = session.DriverInfo.DriverCarIdx;
 
       const lengthStr = session.WeekendInfo.TrackLength;
       const [val, unit] = lengthStr?.split(' ') ?? [];
       const trackLength =
         unit === 'km' ? parseFloat(val) * 1000 : parseFloat(val);
-
-      const s = sessionRef.current;
 
       if (
         seriesId !== s.seriesId ||
@@ -56,10 +85,28 @@ export const useReferenceFuelStoreUpdater = (bridge: ReferenceFuelBridge) => {
         trackLength !== s.trackLength
       ) {
         logger.info('[RefFuelStore] Session changed, initializing...');
+        if (
+          s.seriesId !== -1 &&
+          s.playerCarIdx !== -1 &&
+          s.drivers[s.playerCarIdx]
+        ) {
+          const player = s.drivers[s.playerCarIdx];
+          const playerClassId = player?.CarClassID ?? -1;
+          saveAverageLap(bridge, s.seriesId, playerClassId);
+        }
         completeSession();
 
         const classList = getClassList(drivers, paceCarIdx);
-        initialize(bridge, seriesId, trackId, trackLength, classList);
+        const player = drivers[playerCarIdx];
+        const playerClassId = player?.CarClassID ?? -1;
+        initialize(
+          bridge,
+          seriesId,
+          trackId,
+          trackLength,
+          classList,
+          playerClassId
+        );
 
         Object.assign(s, {
           seriesId,
@@ -68,6 +115,7 @@ export const useReferenceFuelStoreUpdater = (bridge: ReferenceFuelBridge) => {
           trackLength,
           drivers,
           paceCarIdx,
+          playerCarIdx,
         });
       } else {
         s.drivers = drivers;
@@ -86,25 +134,40 @@ export const useReferenceFuelStoreUpdater = (bridge: ReferenceFuelBridge) => {
         logger.info(
           `[RefFuelStore] SessionNum changed to ${sessionNum}, resetting...`
         );
+        if (s.playerCarIdx !== -1 && s.drivers[s.playerCarIdx]) {
+          const player = s.drivers[s.playerCarIdx];
+          const playerClassId = player?.CarClassID ?? -1;
+          saveAverageLap(bridge, s.seriesId, playerClassId);
+        }
         completeSession();
 
         const classList = getClassList(s.drivers, s.paceCarIdx);
+        const player = s.drivers[s.playerCarIdx];
+        const playerClassId = player?.CarClassID ?? -1;
 
-        initialize(bridge, s.seriesId, s.trackId, s.trackLength, classList);
+        initialize(
+          bridge,
+          s.seriesId,
+          s.trackId,
+          s.trackLength,
+          classList,
+          playerClassId
+        );
         s.sessionNum = sessionNum;
       }
 
       const dists = telemetry.CarIdxLapDistPct?.value || ([] as number[]);
       const pits = telemetry.CarIdxOnPitRoad?.value || ([] as boolean[]);
-      const playerFuelLevel = telemetry.FuelLevel?.value?.[0] ?? 0;
-      const playerCarIdx = telemetry.PlayerCarIdx?.value?.[0] ?? -1;
-
+      const rawFuelLevel = telemetry.FuelLevel?.value?.[0];
+      const playerFuelLevel =
+        rawFuelLevel !== undefined ? parseFloat(rawFuelLevel.toFixed(5)) : 0;
       if (
         dists.length > 0 &&
         pits.length > 0 &&
-        playerCarIdx > -1 &&
+        s.playerCarIdx >= 0 &&
         s.drivers.length > 0
       ) {
+        const playerCarIdx = s.playerCarIdx;
         const player = s.drivers[playerCarIdx];
         const playerClassId = player?.CarClassID ?? 0;
         const playerLapDistPct = dists[playerCarIdx];
@@ -125,8 +188,18 @@ export const useReferenceFuelStoreUpdater = (bridge: ReferenceFuelBridge) => {
     });
 
     return () => {
+      const s = currentSession;
+      if (
+        s.seriesId !== -1 &&
+        s.playerCarIdx !== -1 &&
+        s.drivers[s.playerCarIdx]
+      ) {
+        const player = s.drivers[s.playerCarIdx];
+        const playerClassId = player?.CarClassID ?? -1;
+        saveAverageLap(bridge, s.seriesId, playerClassId);
+      }
       unsubSession();
       unsubTelemetry();
     };
-  }, [bridge, completeSession, initialize, collectBulkData]);
+  }, [bridge, completeSession, initialize, collectBulkData, saveAverageLap]);
 };

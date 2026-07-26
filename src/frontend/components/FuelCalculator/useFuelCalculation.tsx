@@ -7,11 +7,19 @@ import {
   useLapTimes,
   useTelemetryValue,
   useTelemetryValueRounded,
-  useSessionStore,
   useReferenceFuelStore,
+  useReferenceLapStore,
+  useCarIdxClassEstLapTime,
+  useSessionDrivers,
 } from '@irdashies/context';
 import type { FuelCalculation, FuelCalculatorSettings } from './types';
 import { calculateLapsRemainingFromTime } from './sharpOverlayCalculations';
+import {
+  calculateConfidence,
+  calculateFuelRequiredToFinish,
+  calculateProjectedLapUsage,
+  calculateRefuelRequired,
+} from './fuelCalculations';
 
 export function useFuelCalculation(
   safetyMargin = 0.3,
@@ -19,100 +27,130 @@ export function useFuelCalculation(
 ): FuelCalculation | null {
   // Fetch player details
   const playerIdx = useDriverCarIdx() ?? -1;
-  const drivers = useSessionStore(
-    (state) => state.session?.DriverInfo?.Drivers || []
-  );
-  const playerClassId =
-    playerIdx !== -1 ? (drivers[playerIdx]?.CarClassID ?? -1) : -1;
 
-  safetyMargin = settings?.safetyMargin ?? 0.3;
+  safetyMargin = settings?.safetyMargin ?? safetyMargin;
 
   // Fetch telemetry values directly
   const fuelLevel = useTelemetryValue<number>('FuelLevel') ?? 0;
   const currentLapNumber = useTelemetryValue<number>('Lap') ?? 0;
-  const lapDistPct = useTelemetryValueRounded('LapDistPct', 3) ?? 0;
+  const lapDistPct = useTelemetryValueRounded('LapDistPct', 4) ?? 0;
   const telemetryLapsRemaining =
     useTelemetryValue<number>('SessionLapsRemain') ?? 0;
   const timeRemaining = useTelemetryValue<number>('SessionTimeRemain') ?? 0;
 
   // Fetch from ReferenceFuelStore
-  const getReferenceFuel = useReferenceFuelStore(
-    (state) => state.getReferenceFuel
-  );
-  const playerReferenceFuel = getReferenceFuel(playerIdx, playerClassId, false);
+  const getFuelStats = useReferenceFuelStore((state) => state.getFuelStats);
+  const numLaps = settings?.avgLapsCount ?? 5;
+  const {
+    minLap,
+    maxLap,
+    avgConsumption: avgConsumption5L,
+  } = getFuelStats(numLaps, false);
+  const { avgConsumption: avgConsumption10L } = getFuelStats(10, false);
+  const lapHistory = useReferenceFuelStore((state) => state.lapHistory);
+  const activeLap = useReferenceFuelStore((state) => state.activeLap);
 
   const lapTimes = useLapTimes();
-  const playerLapTime = lapTimes[playerIdx];
+  let playerLapTime = (lapTimes.length > 0 ? lapTimes[playerIdx] : 0) || 0;
 
-  let raceLapsRemaining = 0;
+  const getReferenceTimeLap = useReferenceLapStore((s) => s.getReferenceLap);
+  const drivers = useSessionDrivers();
+  const player = drivers?.find((d) => d.CarIdx === playerIdx);
+  const playerClassId = player?.CarClassID ?? -1;
 
-  if (telemetryLapsRemaining > 0) {
-    const lapsRemainingBasedOnTime = calculateLapsRemainingFromTime(
-      lapDistPct,
-      timeRemaining,
-      playerLapTime
-    );
-    if (lapsRemainingBasedOnTime < telemetryLapsRemaining) {
-      raceLapsRemaining = lapsRemainingBasedOnTime;
-    } else {
-      raceLapsRemaining = telemetryLapsRemaining;
+  if (playerLapTime <= 0 && playerClassId > 0) {
+    const refTimeLap = getReferenceTimeLap(playerIdx, playerClassId, false);
+    if (refTimeLap && refTimeLap.finishTime > 0 && refTimeLap.startTime >= 0) {
+      playerLapTime = refTimeLap.finishTime - refTimeLap.startTime;
     }
   }
 
-  // Calculate fuel consumption using ReferenceFuel if available
-  let fuelConsumption = 3;
-  let remainingFuelCurrentLap = (1 - lapDistPct) * fuelConsumption;
-
-  if (playerReferenceFuel && playerReferenceFuel.pointsCount > 0) {
-    const totalLapFuel =
-      playerReferenceFuel.startFuel - playerReferenceFuel.finishFuel;
-    if (totalLapFuel > 0) {
-      fuelConsumption = totalLapFuel;
-      const key = Math.min(
-        Math.max(Math.floor(lapDistPct * playerReferenceFuel.pointsCount), 0),
-        playerReferenceFuel.pointsCount - 1
-      );
-      const fuelConsumedThisLap = playerReferenceFuel.fuelConsumed[key] ?? 0;
-      remainingFuelCurrentLap = Math.max(totalLapFuel - fuelConsumedThisLap, 0);
-    }
+  const classEstLapTimes = useCarIdxClassEstLapTime();
+  if (playerLapTime <= 0) {
+    playerLapTime = classEstLapTimes?.[playerIdx] ?? 0;
   }
 
-  // The number of full laps remaining is raceLapsRemaining - 1 (capped at 0)
-  const fullLapsRemaining = Math.max(Math.ceil(raceLapsRemaining) - 1, 0);
+  const lapsRemainingBasedOnTime = calculateLapsRemainingFromTime(
+    lapDistPct,
+    timeRemaining,
+    playerLapTime
+  );
 
-  let fuelRequired = 0;
-  if (raceLapsRemaining > -1) {
-    fuelRequired =
-      remainingFuelCurrentLap +
-      fullLapsRemaining * fuelConsumption +
-      safetyMargin;
-  }
-  const refuelRequired = fuelRequired - fuelLevel;
+  const hasTelemetryLaps =
+    telemetryLapsRemaining > 0 && telemetryLapsRemaining !== 32767;
+  const raceLapsRemaining = hasTelemetryLaps
+    ? telemetryLapsRemaining
+    : lapsRemainingBasedOnTime;
+
+  const fuelConsumption = avgConsumption5L;
+  // maxLap && maxLap.finishFuel >= 0 ? maxLap.startFuel - maxLap.finishFuel : 0;
+
+  const lastCompletedLap = lapHistory[lapHistory.length - 1];
+  // const referenceLap = lastCompletedLap || maxLap;
+  // const fuelConsumedSoFar = referenceLap
+  //   ? (interpolateFuelAtPoint(referenceLap, lapDistPct) ??
+  //     lapDistPct * fuelConsumption)
+  //   : lapDistPct * fuelConsumption;
+  const fuelConsumedSoFar = activeLap.startFuel - fuelLevel;
+
+  const remainingFuelCurrentLap = Math.max(
+    0,
+    fuelConsumption - fuelConsumedSoFar
+  );
+  const fullLapsRemaining = Math.max(0, Math.ceil(raceLapsRemaining) - 1);
+
+  const fuelRequired = calculateFuelRequiredToFinish(
+    fullLapsRemaining,
+    lapDistPct,
+    fuelConsumption,
+    remainingFuelCurrentLap
+  );
+
+  const refuelRequired =
+    calculateRefuelRequired(fuelLevel, fuelRequired) + safetyMargin;
+
+  const lapsWithFuel = fuelConsumption > 0 ? fuelLevel / fuelConsumption : 0;
+
+  const calculatedLastLapUsage =
+    lastCompletedLap && lastCompletedLap.finishFuel >= 0
+      ? lastCompletedLap.startFuel - lastCompletedLap.finishFuel
+      : fuelConsumption;
+
+  const projectedLapUsage = calculateProjectedLapUsage(
+    maxLap,
+    activeLap,
+    fuelLevel,
+    lapDistPct,
+    fuelConsumption
+  );
 
   // Return a default skeleton calculation that avoids all missing context/history data
   return {
     fuelLevel: fuelLevel ?? 0,
-    lastLapUsage: 0,
-    currentLapUsage: 0,
-    projectedLapUsage: 0,
-    avgLaps: 0,
-    avg10Laps: 0,
-    avgAllGreenLaps: 0,
+    lapDistPct: lapDistPct ?? 0,
+    lastLapUsage: calculatedLastLapUsage,
+    currentLapUsage: fuelConsumption,
+    projectedLapUsage: projectedLapUsage,
+    avgLaps: avgConsumption5L,
+    avg10Laps: avgConsumption10L,
+    avgAllGreenLaps: fuelConsumption,
     maxQualify: null,
-    minLapUsage: 0,
-    maxLapUsage: 0,
-    lapsWithFuel: 0,
-    lapsRemaining: 0,
-    totalLaps: 0,
+    minLapUsage:
+      minLap && minLap.startFuel > 0 ? minLap.startFuel - minLap.finishFuel : 0,
+    maxLapUsage:
+      maxLap && maxLap.startFuel > 0 ? maxLap.startFuel - maxLap.finishFuel : 0,
+    lapsWithFuel: lapsWithFuel,
+    lapsRemaining: raceLapsRemaining,
+    totalLaps: currentLapNumber + 1 + raceLapsRemaining,
     currentLap: currentLapNumber ?? 0,
     fuelToFinish: fuelRequired,
     fuelToAdd: refuelRequired,
     pitWindowOpen: 0,
     pitWindowClose: 0,
-    canFinish: false,
+    canFinish: raceLapsRemaining <= lapsWithFuel,
     targetConsumption: 0,
-    confidence: 'low',
-    fuelAtFinish: 0,
-    avgLapTime: 0,
+    confidence: calculateConfidence(lapHistory.length),
+    fuelAtFinish: raceLapsRemaining * fuelConsumption - fuelLevel,
+    avgLapTime: playerLapTime,
   };
 }

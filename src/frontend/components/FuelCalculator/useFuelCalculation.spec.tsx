@@ -6,16 +6,46 @@ import {
   useTelemetryStore,
   useSessionStore,
   useLapTimesStore,
+  useReferenceLapStore,
 } from '@irdashies/context';
-import type { ReferenceFuel, Session, Telemetry } from '@irdashies/types';
+import type {
+  ReferenceFuel,
+  Session,
+  Telemetry,
+  ReferenceLap,
+} from '@irdashies/types';
+
+function createMockReferenceFuel(
+  overrides?: Partial<ReferenceFuel>
+): ReferenceFuel {
+  const pointsCount = 100;
+  const pointPos = new Float32Array(pointsCount);
+  for (let i = 0; i < pointsCount; i++) {
+    pointPos[i] = i * 0.01;
+  }
+  return {
+    pointPos,
+    fuelConsumed: new Float32Array(pointsCount),
+    tangents: new Float32Array(pointsCount),
+    interval: 0.01,
+    pointsCount,
+    startFuel: 3.0,
+    finishFuel: 0.0,
+    lastTrackedPct: 1.0,
+    isCleanLap: true,
+    ...overrides,
+  };
+}
 
 describe('useFuelCalculation hook', () => {
   beforeEach(() => {
     // Reset all stores to clean defaults
     useReferenceFuelStore.setState({
-      activeLaps: new Map(),
-      bestLaps: new Map(),
-      persistedLaps: new Map(),
+      activeLap: { startFuel: -1 } as ReferenceFuel,
+      lapHistory: [],
+      persistedLap: { startFuel: -1 } as ReferenceFuel,
+      minLap: { startFuel: -1 } as ReferenceFuel,
+      maxLap: { startFuel: -1 } as ReferenceFuel,
       trackId: null,
       trackLength: null,
       interval: 0,
@@ -32,6 +62,16 @@ describe('useFuelCalculation hook', () => {
 
     useLapTimesStore.setState({
       lapTimes: [],
+    });
+
+    useReferenceLapStore.setState({
+      activeLaps: new Map(),
+      bestLaps: new Map(),
+      persistedLaps: new Map(),
+      trackId: null,
+      trackLength: null,
+      interval: 0,
+      pointsCount: 0,
     });
   });
 
@@ -52,21 +92,11 @@ describe('useFuelCalculation hook', () => {
       lapTimes: [60],
     });
 
-    const mockReferenceFuel: ReferenceFuel = {
-      pointPos: new Float32Array(100),
-      fuelConsumed: new Float32Array(100),
-      tangents: new Float32Array(100),
-      interval: 0.01,
-      pointsCount: 100,
-      startFuel: 3.0,
-      finishFuel: 0.0,
-      lastTrackedPct: 1.0,
-      isCleanLap: true,
-    };
+    const mockReferenceFuel = createMockReferenceFuel();
     mockReferenceFuel.fuelConsumed[50] = 1.0;
 
     useReferenceFuelStore.setState({
-      persistedLaps: new Map([[playerClassId, mockReferenceFuel]]),
+      persistedLap: mockReferenceFuel,
     });
 
     useTelemetryStore.setState({
@@ -74,7 +104,7 @@ describe('useFuelCalculation hook', () => {
         FuelLevel: { value: [10] },
         Lap: { value: [1] },
         LapDistPct: { value: [0.5] },
-        SessionLapsRemain: { value: [99] },
+        SessionLapsRemain: { value: [32767] },
         SessionTimeRemain: { value: [600] }, // 60 sec laps, 10L remain
       } as unknown as Telemetry,
     });
@@ -82,8 +112,8 @@ describe('useFuelCalculation hook', () => {
     const { result } = renderHook(() => useFuelCalculation(0.0));
 
     expect(result.current).not.toBeNull();
-    expect(result.current?.fuelToFinish).toBe(32);
-    expect(result.current?.fuelToAdd).toBe(22);
+    expect(result.current?.fuelToFinish).toBe(30.5);
+    expect(result.current?.fuelToAdd).toBe(20.5);
   });
 
   it('applies the safety margin correctly to the calculations', () => {
@@ -103,21 +133,11 @@ describe('useFuelCalculation hook', () => {
       lapTimes: [60],
     });
 
-    const mockReferenceFuel: ReferenceFuel = {
-      pointPos: new Float32Array(100),
-      fuelConsumed: new Float32Array(100),
-      tangents: new Float32Array(100),
-      interval: 0.01,
-      pointsCount: 100,
-      startFuel: 3.0,
-      finishFuel: 0.0,
-      lastTrackedPct: 1.0,
-      isCleanLap: true,
-    };
+    const mockReferenceFuel = createMockReferenceFuel();
     mockReferenceFuel.fuelConsumed[50] = 1.0;
 
     useReferenceFuelStore.setState({
-      persistedLaps: new Map([[playerClassId, mockReferenceFuel]]),
+      persistedLap: mockReferenceFuel,
     });
 
     useTelemetryStore.setState({
@@ -125,7 +145,7 @@ describe('useFuelCalculation hook', () => {
         FuelLevel: { value: [10] },
         Lap: { value: [1] },
         LapDistPct: { value: [0.5] },
-        SessionLapsRemain: { value: [99] },
+        SessionLapsRemain: { value: [32767] },
         SessionTimeRemain: { value: [600] },
       } as unknown as Telemetry,
     });
@@ -133,11 +153,11 @@ describe('useFuelCalculation hook', () => {
     // Safety margin of 0.30L: 32L + 0.30L = 32.3L
     const { result } = renderHook(() => useFuelCalculation(0.3));
 
-    expect(result.current?.fuelToFinish).toBeCloseTo(32.3, 5);
-    expect(result.current?.fuelToAdd).toBeCloseTo(22.3, 5);
+    expect(result.current?.fuelToFinish).toBeCloseTo(30.8, 5);
+    expect(result.current?.fuelToAdd).toBeCloseTo(20.8, 5);
   });
 
-  it('falls back to default consumption (3L) and proportional lap fuel when no reference fuel is available', () => {
+  it('calculates 0 fuel required when no reference fuel is available', () => {
     const playerCarIdx = 0;
     const playerClassId = 1;
 
@@ -160,17 +180,17 @@ describe('useFuelCalculation hook', () => {
       telemetry: {
         FuelLevel: { value: [10] },
         Lap: { value: [1] },
-        LapDistPct: { value: [0.5] }, // 50% on track -> remaining 50% takes 1.5L (3L * 0.5)
-        SessionLapsRemain: { value: [99] },
-        SessionTimeRemain: { value: [600] }, // 10 more full laps (10 * 3L = 30L)
+        LapDistPct: { value: [0.5] },
+        SessionLapsRemain: { value: [32767] },
+        SessionTimeRemain: { value: [600] },
       } as unknown as Telemetry,
     });
 
     const { result } = renderHook(() => useFuelCalculation(0.0));
 
-    // Expected: 1.5L (current lap) + 30L (10 full laps) = 31.5L
-    expect(result.current?.fuelToFinish).toBe(31.5);
-    expect(result.current?.fuelToAdd).toBe(21.5);
+    // Expected: 0L required since there's no consumption data
+    expect(result.current?.fuelToFinish).toBe(0);
+    expect(result.current?.fuelToAdd).toBe(-10);
   });
 
   it('returns remaining current lap fuel when there is no time remaining', () => {
@@ -186,21 +206,11 @@ describe('useFuelCalculation hook', () => {
       } as unknown as Session,
     });
 
-    const mockReferenceFuel: ReferenceFuel = {
-      pointPos: new Float32Array(100),
-      fuelConsumed: new Float32Array(100),
-      tangents: new Float32Array(100),
-      interval: 0.01,
-      pointsCount: 100,
-      startFuel: 3.0,
-      finishFuel: 0.0,
-      lastTrackedPct: 1.0,
-      isCleanLap: true,
-    };
+    const mockReferenceFuel = createMockReferenceFuel();
     mockReferenceFuel.fuelConsumed[50] = 1.0;
 
     useReferenceFuelStore.setState({
-      persistedLaps: new Map([[playerClassId, mockReferenceFuel]]),
+      persistedLap: mockReferenceFuel,
     });
 
     useTelemetryStore.setState({
@@ -208,15 +218,193 @@ describe('useFuelCalculation hook', () => {
         FuelLevel: { value: [10] },
         Lap: { value: [1] },
         LapDistPct: { value: [0.5] },
-        SessionLapsRemain: { value: [99] },
+        SessionLapsRemain: { value: [32767] },
         SessionTimeRemain: { value: [0] }, // Session over
       } as unknown as Telemetry,
     });
 
     const { result } = renderHook(() => useFuelCalculation(0.0));
 
-    expect(result.current?.fuelToFinish).toBe(2);
-    expect(result.current?.fuelToAdd).toBe(-8); // 2L required to end lap - 10L current = -8L surplus
+    expect(result.current?.fuelToFinish).toBe(0.5);
+    expect(result.current?.fuelToAdd).toBe(-9.5); // 0.5L required to finish - 10L current = -9.5L surplus
+  });
+
+  it('falls back to reference lap time when lapTimes array is empty', () => {
+    const playerCarIdx = 0;
+    const playerClassId = 1;
+
+    useSessionStore.setState({
+      session: {
+        DriverInfo: {
+          DriverCarIdx: playerCarIdx,
+          Drivers: [{ CarIdx: playerCarIdx, CarClassID: playerClassId }],
+        },
+      } as unknown as Session,
+    });
+
+    useLapTimesStore.setState({
+      lapTimes: [], // Empty
+    });
+
+    // Mock ReferenceLap with 60s duration (startTime = 10, finishTime = 70)
+    useReferenceLapStore.setState({
+      bestLaps: new Map([
+        [
+          playerCarIdx,
+          { startTime: 10, finishTime: 70 } as unknown as ReferenceLap,
+        ],
+      ]),
+    });
+
+    const mockReferenceFuel = createMockReferenceFuel();
+    mockReferenceFuel.fuelConsumed[50] = 1.0;
+
+    useReferenceFuelStore.setState({
+      persistedLap: mockReferenceFuel,
+    });
+
+    useTelemetryStore.setState({
+      telemetry: {
+        FuelLevel: { value: [10] },
+        Lap: { value: [1] },
+        LapDistPct: { value: [0.5] },
+        SessionLapsRemain: { value: [32767] },
+        SessionTimeRemain: { value: [600] }, // 10 more laps if lap time is 60s
+      } as unknown as Telemetry,
+    });
+
+    const { result } = renderHook(() => useFuelCalculation(0.0));
+
+    expect(result.current?.fuelToFinish).toBe(30.5);
+  });
+
+  it('falls back to SessionInfo class estimated lap time when both lapTimes and reference lap time are not available', () => {
+    const playerCarIdx = 0;
+    const playerClassId = 1;
+
+    useSessionStore.setState({
+      session: {
+        DriverInfo: {
+          DriverCarIdx: playerCarIdx,
+          Drivers: [
+            {
+              CarIdx: playerCarIdx,
+              CarClassID: playerClassId,
+              CarClassEstLapTime: 60,
+            },
+          ],
+        },
+      } as unknown as Session,
+    });
+
+    useLapTimesStore.setState({
+      lapTimes: [], // Empty
+    });
+
+    // bestLaps is empty in ReferenceLapStore
+    useReferenceLapStore.setState({
+      bestLaps: new Map(),
+    });
+
+    const mockReferenceFuel = createMockReferenceFuel();
+    mockReferenceFuel.fuelConsumed[50] = 1.0;
+
+    useReferenceFuelStore.setState({
+      persistedLap: mockReferenceFuel,
+    });
+
+    useTelemetryStore.setState({
+      telemetry: {
+        FuelLevel: { value: [10] },
+        Lap: { value: [1] },
+        LapDistPct: { value: [0.5] },
+        SessionLapsRemain: { value: [32767] },
+        SessionTimeRemain: { value: [600] }, // 10 more laps if class est time is 60s
+      } as unknown as Telemetry,
+    });
+
+    const { result } = renderHook(() => useFuelCalculation(0.0));
+
+    expect(result.current?.fuelToFinish).toBe(30.5);
+  });
+
+  it('should return the fuel consumption of the last completed lap in lapHistory as lastLapUsage', () => {
+    const lastLap: ReferenceFuel = {
+      startFuel: 4.2,
+      finishFuel: 1.2, // 3.0L consumed
+      fuelConsumed: new Float32Array([0, 3.0]),
+      pointPos: new Float32Array([0, 1]),
+      tangents: new Float32Array([0, 0]),
+      interval: 0.5,
+      pointsCount: 2,
+      lastTrackedPct: 1.0,
+      isCleanLap: true,
+    };
+
+    useReferenceFuelStore.setState({
+      lapHistory: [lastLap],
+    });
+
+    const { result } = renderHook(() => useFuelCalculation(0.0));
+
+    expect(result.current?.lastLapUsage).toBe(3.0);
+  });
+
+  it('calculates projectedLapUsage by cross referencing active lap with last lap reference data', () => {
+    const playerCarIdx = 0;
+    const playerClassId = 1;
+
+    useSessionStore.setState({
+      session: {
+        DriverInfo: {
+          DriverCarIdx: playerCarIdx,
+          Drivers: [{ CarIdx: playerCarIdx, CarClassID: playerClassId }],
+        },
+      } as unknown as Session,
+    });
+
+    const lastLap: ReferenceFuel = {
+      startFuel: 5.0,
+      finishFuel: 2.0,
+      fuelConsumed: new Float32Array([0, 0.75, 1.5, 3.0]),
+      pointPos: new Float32Array([0, 0.25, 0.5, 0.75]),
+      tangents: new Float32Array([0, 0, 0, 0]),
+      interval: 0.25,
+      pointsCount: 4,
+      lastTrackedPct: 1.0,
+      isCleanLap: true,
+    };
+
+    const activeLap: ReferenceFuel = {
+      startFuel: 10.0,
+      finishFuel: -1,
+      fuelConsumed: new Float32Array([0, 0.5, 1.0, -1]),
+      pointPos: new Float32Array([0, 0.25, 0.5, 0.75]),
+      tangents: new Float32Array([0, 0, 0, 0]),
+      interval: 0.25,
+      pointsCount: 4,
+      lastTrackedPct: 0.5,
+      isCleanLap: true,
+    };
+
+    useReferenceFuelStore.setState({
+      lapHistory: [lastLap],
+      activeLap: activeLap,
+    });
+
+    useTelemetryStore.setState({
+      telemetry: {
+        FuelLevel: { value: [9.0] },
+        Lap: { value: [2] },
+        LapDistPct: { value: [0.5] },
+        SessionLapsRemain: { value: [32767] },
+        SessionTimeRemain: { value: [600] },
+      } as unknown as Telemetry,
+    });
+
+    const { result } = renderHook(() => useFuelCalculation(0.0));
+
+    expect(result.current?.projectedLapUsage).toBe(2.5);
   });
 
   // Future feature specifications (Not yet implemented)

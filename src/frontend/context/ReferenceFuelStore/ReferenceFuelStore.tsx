@@ -25,23 +25,6 @@ const EMPTY_FUEL_LAP: Readonly<ReferenceFuel> = {
 
 const TARGET_SPACING_METERS = 10;
 
-const BUFFER_POOL: Float32Array[] = [];
-
-function acquireBuffer(size: number): Float32Array {
-  const buf = BUFFER_POOL.pop();
-  if (buf && buf.length === size) {
-    return buf;
-  }
-  return new Float32Array(size);
-}
-
-function releaseFuelBuffers(lap: ReferenceFuel | undefined) {
-  if (!lap || lap.pointsCount === 0) return;
-  BUFFER_POOL.push(lap.fuelConsumed);
-  BUFFER_POOL.push(lap.pointPos);
-  BUFFER_POOL.push(lap.tangents);
-}
-
 function createReferenceFuel(
   pointsCount: number,
   interval: number,
@@ -52,9 +35,9 @@ function createReferenceFuel(
   return {
     startFuel,
     finishFuel: -1,
-    fuelConsumed: acquireBuffer(pointsCount).fill(-1),
-    pointPos: acquireBuffer(pointsCount).fill(-1),
-    tangents: acquireBuffer(pointsCount).fill(0),
+    fuelConsumed: new Float32Array(pointsCount).fill(-1),
+    pointPos: new Float32Array(pointsCount).fill(-1),
+    tangents: new Float32Array(pointsCount).fill(0),
     interval,
     pointsCount,
     lastTrackedPct: trackPct,
@@ -68,9 +51,11 @@ function getBucketIndex(trackPct: number, pointsCount: number): number {
 }
 
 export interface ReferenceFuelRegistryState {
-  activeLaps: Map<number, ReferenceFuel>;
-  bestLaps: Map<number, ReferenceFuel>;
-  persistedLaps: Map<number, ReferenceFuel>;
+  activeLap: ReferenceFuel;
+  lapHistory: ReferenceFuel[];
+  persistedLap: ReferenceFuel;
+  minLap: ReferenceFuel;
+  maxLap: ReferenceFuel;
   trackId: number | null;
   trackLength: number | null;
   interval: number;
@@ -81,7 +66,8 @@ export interface ReferenceFuelRegistryState {
     seriesId: number,
     trackId: number,
     trackLength: number,
-    classList: number[]
+    classList: number[],
+    playerClassId: number
   ) => Promise<void>;
 
   collectBulkData: (
@@ -94,64 +80,76 @@ export interface ReferenceFuelRegistryState {
     playerFuelLevel: number
   ) => void;
 
-  getReferenceFuel: (
-    carIdx: number,
-    classId: number,
+  getFuelStats: (
+    numLaps: number,
     usePersistence: boolean
-  ) => ReferenceFuel;
+  ) => {
+    minLap: ReferenceFuel;
+    maxLap: ReferenceFuel;
+    avgConsumption: number;
+  };
 
   completeSession: () => void;
+  saveAverageLap: (
+    bridge: ReferenceFuelBridge,
+    seriesId: number,
+    playerClassId: number
+  ) => Promise<void>;
 }
 
 export const useReferenceFuelStore = create<ReferenceFuelRegistryState>(
   (set, get) => ({
-    activeLaps: new Map<number, ReferenceFuel>(),
-    bestLaps: new Map<number, ReferenceFuel>(),
-    persistedLaps: new Map<number, ReferenceFuel>(),
+    activeLap: EMPTY_FUEL_LAP,
+    lapHistory: [],
+    persistedLap: EMPTY_FUEL_LAP,
+    minLap: EMPTY_FUEL_LAP,
+    maxLap: EMPTY_FUEL_LAP,
     trackId: null,
     trackLength: null,
     interval: 0,
     pointsCount: 0,
 
-    initialize: async (bridge, seriesId, trackId, trackLength, classList) => {
+    initialize: async (
+      bridge,
+      seriesId,
+      trackId,
+      trackLength,
+      classList,
+      playerClassId
+    ) => {
       const pointsCount = Math.ceil(trackLength / TARGET_SPACING_METERS);
       const interval = parseFloat((1 / pointsCount).toFixed(6));
 
-      const results = await Promise.all(
-        classList.map(async (classId) => {
-          try {
-            const fuel = (await bridge.getReferenceFuel(
-              seriesId,
-              trackId,
-              classId
-            )) as ReferenceFuel;
+      let persistedLap = EMPTY_FUEL_LAP;
+      if (playerClassId && playerClassId > 0) {
+        try {
+          const fuel = (await bridge.getReferenceFuel(
+            seriesId,
+            trackId,
+            playerClassId
+          )) as ReferenceFuel;
 
-            return { classId, fuel };
-          } catch (error) {
-            logger.error(
-              `[RefFuelStore] Failed to load reference fuel for class ${classId}:`,
-              error
-            );
-            return { classId, fuel: null };
+          if (fuel) {
+            persistedLap = fuel;
           }
-        })
-      );
-
-      const newPersistedLaps = new Map<number, ReferenceFuel>();
-      results.forEach(({ classId, fuel }) => {
-        if (fuel) {
-          newPersistedLaps.set(classId, fuel);
+        } catch (error) {
+          logger.error(
+            `[RefFuelStore] Failed to load reference fuel for class ${playerClassId}:`,
+            error
+          );
         }
-      });
+      }
 
       set({
         trackId,
         trackLength,
         pointsCount,
         interval,
-        persistedLaps: newPersistedLaps,
-        activeLaps: new Map<number, ReferenceFuel>(),
-        bestLaps: new Map<number, ReferenceFuel>(),
+        persistedLap,
+        activeLap: EMPTY_FUEL_LAP,
+        lapHistory: [],
+        minLap: EMPTY_FUEL_LAP,
+        maxLap: EMPTY_FUEL_LAP,
       });
     },
 
@@ -164,27 +162,18 @@ export const useReferenceFuelStore = create<ReferenceFuelRegistryState>(
       playerOnPitRoad,
       playerFuelLevel
     ) => {
-      const {
-        activeLaps,
-        bestLaps,
-        persistedLaps,
-        trackId,
-        pointsCount,
-        interval,
-      } = get();
+      const { activeLap, minLap, maxLap, pointsCount, interval } = get();
 
       if (playerCarIdx === undefined || playerCarIdx === -1) return;
       if (playerLapDistPct === undefined || playerLapDistPct === -1) return;
 
       const isOnPitRoad = playerOnPitRoad;
-      const refLap = activeLaps.get(playerCarIdx);
       const key = getBucketIndex(playerLapDistPct, pointsCount);
 
-      if (!refLap) {
+      if (activeLap.startFuel === -1) {
         const isTrackedFromStart = playerLapDistPct <= interval;
-        activeLaps.set(
-          playerCarIdx,
-          createReferenceFuel(
+        set({
+          activeLap: createReferenceFuel(
             pointsCount,
             interval,
             isTrackedFromStart ? playerFuelLevel : -1,
@@ -192,81 +181,57 @@ export const useReferenceFuelStore = create<ReferenceFuelRegistryState>(
             isTrackedFromStart &&
               isLapClean(TrackLocation.OnTrack, isOnPitRoad) &&
               playerFuelLevel > 0
-          )
-        );
+          ),
+        });
         return;
       }
 
       const isLapComplete =
-        refLap.lastTrackedPct > 0.95 && playerLapDistPct < 0.05;
+        activeLap.lastTrackedPct > 0.95 && playerLapDistPct < 0.05;
 
       if (isLapComplete) {
-        refLap.finishFuel = playerFuelLevel;
-        const currentLapFuel = refLap.startFuel - refLap.finishFuel;
-        let isPromoted = false;
+        activeLap.finishFuel = playerFuelLevel;
+        const currentLapFuel = activeLap.startFuel - activeLap.finishFuel;
 
-        if (currentLapFuel > 0 && refLap.startFuel > 0 && playerClassId > 0) {
-          const persistedLap = persistedLaps.get(playerClassId);
-          const persistedLapFuel = persistedLap
-            ? persistedLap.startFuel - persistedLap.finishFuel
-            : null;
+        if (
+          currentLapFuel > 0 &&
+          activeLap.startFuel > 0 &&
+          activeLap.isCleanLap
+        ) {
+          precomputePCHIPTangents(activeLap);
 
-          const bestLap = bestLaps.get(playerCarIdx);
-          const bestLapFuel = bestLap
-            ? bestLap.startFuel - bestLap.finishFuel
-            : null;
+          const newHistory = [...get().lapHistory, activeLap];
 
-          // In fuel mode, "best" is the lap with the lowest clean fuel consumption (or highest efficiency)
-          const isNewBestFuelLap = !bestLapFuel || currentLapFuel < bestLapFuel;
-
-          if (isNewBestFuelLap && refLap.isCleanLap) {
-            precomputePCHIPTangents(refLap);
-            isPromoted = true;
-
-            if (bestLap && bestLap !== refLap) {
-              const isStillPersisted = Array.from(
-                persistedLaps.values()
-              ).includes(bestLap);
-              if (!isStillPersisted) releaseFuelBuffers(bestLap);
-            }
-
-            bestLaps.set(playerCarIdx, refLap);
-
-            const isCurrentBetterThanPersisted =
-              currentLapFuel < (persistedLapFuel || Number.MAX_SAFE_INTEGER);
-
-            if (isCurrentBetterThanPersisted) {
-              if (persistedLap && persistedLap !== refLap) {
-                const isStillBest = Array.from(bestLaps.values()).includes(
-                  persistedLap
-                );
-                if (!isStillBest) releaseFuelBuffers(persistedLap);
-              }
-
-              persistedLaps.set(playerClassId, refLap);
-
-              if (seriesId !== -1 && trackId !== null) {
-                bridge
-                  .saveReferenceFuel(seriesId, trackId, playerClassId, refLap)
-                  .catch((err: Error) => {
-                    logger.error(
-                      `[RefFuelStore] Failed to save class ${playerClassId}`,
-                      err
-                    );
-                  });
-              }
-            }
+          // Update minLap
+          let newMinLap = minLap;
+          const minLapFuel =
+            minLap.startFuel > 0
+              ? minLap.startFuel - minLap.finishFuel
+              : Number.MAX_VALUE;
+          if (currentLapFuel < minLapFuel) {
+            newMinLap = activeLap;
           }
-        }
 
-        if (!isPromoted) {
-          releaseFuelBuffers(refLap);
+          // Update maxLap
+          let newMaxLap = maxLap;
+          const maxLapFuel =
+            maxLap.startFuel > 0
+              ? maxLap.startFuel - maxLap.finishFuel
+              : -Number.MAX_VALUE;
+          if (currentLapFuel > maxLapFuel) {
+            newMaxLap = activeLap;
+          }
+
+          set({
+            lapHistory: newHistory,
+            minLap: newMinLap,
+            maxLap: newMaxLap,
+          });
         }
 
         const isTrackedFromStart = playerLapDistPct <= interval;
-        activeLaps.set(
-          playerCarIdx,
-          createReferenceFuel(
+        set({
+          activeLap: createReferenceFuel(
             pointsCount,
             interval,
             playerFuelLevel,
@@ -274,52 +239,144 @@ export const useReferenceFuelStore = create<ReferenceFuelRegistryState>(
             isTrackedFromStart &&
               isLapClean(TrackLocation.OnTrack, isOnPitRoad) &&
               playerFuelLevel > 0
-          )
-        );
-
+          ),
+        });
         return;
       }
 
-      if (refLap.isCleanLap && isOnPitRoad) {
-        refLap.isCleanLap = false;
+      if (activeLap.isCleanLap && isOnPitRoad) {
+        activeLap.isCleanLap = false;
       }
 
-      if (refLap.pointPos[key] === -1) {
-        if (refLap.isCleanLap) {
+      if (activeLap.pointPos[key] === -1) {
+        if (activeLap.isCleanLap) {
           const prevKey = key === 0 ? undefined : key - 1;
 
-          if (prevKey !== undefined && refLap.pointPos[prevKey] === -1) {
-            refLap.isCleanLap = false;
+          if (prevKey !== undefined && activeLap.pointPos[prevKey] === -1) {
+            activeLap.isCleanLap = false;
           }
 
-          if (refLap.isCleanLap && refLap.startFuel > 0) {
-            // Store the cumulative fuel consumed since the start of the lap
-            refLap.fuelConsumed[key] = refLap.startFuel - playerFuelLevel;
-            refLap.pointPos[key] = playerLapDistPct;
+          if (activeLap.isCleanLap && activeLap.startFuel > 0) {
+            activeLap.fuelConsumed[key] = activeLap.startFuel - playerFuelLevel;
+            activeLap.pointPos[key] = playerLapDistPct;
           }
         }
-
-        refLap.lastTrackedPct = playerLapDistPct;
+        activeLap.lastTrackedPct = playerLapDistPct;
       }
     },
 
-    getReferenceFuel: (carIdx, classId, usePersistence) => {
-      const { bestLaps, persistedLaps } = get();
-      const bestLap = bestLaps.get(carIdx);
+    getFuelStats: (numLaps: number, usePersistence: boolean) => {
+      const { lapHistory, persistedLap, minLap, maxLap } = get();
 
-      if (usePersistence || !bestLap) {
-        return persistedLaps.get(classId) ?? EMPTY_FUEL_LAP;
+      if (usePersistence || lapHistory.length === 0) {
+        const hasPersisted = persistedLap && persistedLap.startFuel > 0;
+        const fallbackLap = hasPersisted ? persistedLap : EMPTY_FUEL_LAP;
+        const fallbackConsumption = hasPersisted
+          ? persistedLap.startFuel - persistedLap.finishFuel
+          : 0;
+
+        return {
+          minLap: fallbackLap,
+          maxLap: fallbackLap,
+          avgConsumption: fallbackConsumption,
+        };
       }
-      return bestLap;
+
+      const laps = numLaps > 0 ? lapHistory.slice(-numLaps) : lapHistory;
+
+      let totalConsumption = 0;
+
+      for (const lap of laps) {
+        const consumption = lap.startFuel - lap.finishFuel;
+        totalConsumption += consumption;
+      }
+
+      return {
+        minLap,
+        maxLap,
+        avgConsumption: totalConsumption / laps.length,
+      };
+    },
+
+    saveAverageLap: async (bridge, seriesId, playerClassId) => {
+      const { lapHistory, trackId, pointsCount, interval } = get();
+
+      const validLaps = lapHistory.filter(
+        (lap) => lap.isCleanLap && lap.pointsCount === pointsCount
+      );
+      if (
+        validLaps.length === 0 ||
+        trackId === null ||
+        playerClassId <= 0 ||
+        seriesId === -1
+      ) {
+        return;
+      }
+
+      let totalConsumption = 0;
+      const avgFuelConsumed = new Float32Array(pointsCount);
+
+      for (const lap of validLaps) {
+        totalConsumption += lap.startFuel - lap.finishFuel;
+      }
+      const avgConsumption = totalConsumption / validLaps.length;
+
+      for (let i = 0; i < pointsCount; i++) {
+        let sum = 0;
+        let count = 0;
+        for (const lap of validLaps) {
+          const val = lap.fuelConsumed[i];
+          if (val !== undefined && val !== -1) {
+            sum += val;
+            count++;
+          }
+        }
+        avgFuelConsumed[i] = count > 0 ? sum / count : -1;
+      }
+
+      const avgLap: ReferenceFuel = {
+        startFuel: avgConsumption,
+        finishFuel: 0,
+        fuelConsumed: avgFuelConsumed,
+        tangents: new Float32Array(pointsCount),
+        pointPos: new Float32Array(pointsCount),
+        interval,
+        pointsCount,
+        lastTrackedPct: 1.0,
+        isCleanLap: true,
+      };
+
+      for (let i = 0; i < pointsCount; i++) {
+        avgLap.pointPos[i] = i * interval;
+      }
+
+      precomputePCHIPTangents(avgLap);
+
+      try {
+        await bridge.saveReferenceFuel(
+          seriesId,
+          trackId,
+          playerClassId,
+          avgLap
+        );
+        logger.info(
+          `[RefFuelStore] Saved average fuel consumption lap for class ${playerClassId}`
+        );
+      } catch (err) {
+        logger.error(
+          `[RefFuelStore] Failed to save average fuel consumption for class ${playerClassId}:`,
+          err
+        );
+      }
     },
 
     completeSession: () => {
-      BUFFER_POOL.length = 0;
-
       set({
-        activeLaps: new Map<number, ReferenceFuel>(),
-        bestLaps: new Map<number, ReferenceFuel>(),
-        persistedLaps: new Map<number, ReferenceFuel>(),
+        activeLap: EMPTY_FUEL_LAP,
+        lapHistory: [],
+        persistedLap: EMPTY_FUEL_LAP,
+        minLap: EMPTY_FUEL_LAP,
+        maxLap: EMPTY_FUEL_LAP,
         trackId: null,
         trackLength: null,
         interval: 0,

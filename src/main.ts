@@ -30,7 +30,10 @@ import {
   validateReferenceLapFile,
   flushReferenceLapsOnShutdown,
 } from './app/storage/referenceLaps';
-import { flushReferenceFuelOnShutdown } from './app/storage/referenceFuel';
+import {
+  flushReferenceFuelOnShutdown,
+  validateFuelLapFile,
+} from './app/storage/referenceFuel';
 import { setupChromiumFlagsBridge } from './app/bridge/chromiumFlagsBridge';
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
@@ -61,6 +64,7 @@ app.on('ready', async () => {
 
   // Perform one-time cleanup of old reference laps
   validateReferenceLapFile();
+  validateFuelLapFile();
 
   const dashboard = getOrCreateDefaultDashboard();
   const bridge = getCurrentBridge();

@@ -21,6 +21,7 @@ export function calculateLapsRemainingFromTime(
   return Math.ceil(lapsBeforeRounding);
 }
 
+// TODO: Refactor into a referenceLap based time tracking
 export function calculateLapsRemainingMultiClass(
   timeRemainingSeconds: number,
   raceLeaderPctOnTrack: number,

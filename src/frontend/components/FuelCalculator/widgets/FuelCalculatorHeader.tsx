@@ -83,7 +83,7 @@ export const FuelCalculatorHeader: React.FC<FuelCalculatorWidgetProps> = ({
   if (confidence === 'medium')
     lapsText = `~${Math.ceil(fuelData.lapsRemaining)} LAPS`;
   if (confidence === 'low' || confidence === 'very-low')
-    lapsText = `${Math.floor(fuelData.lapsRemaining)}-${Math.ceil(fuelData.lapsRemaining + 2)} LAPS`;
+    lapsText = `${Math.floor(fuelData.lapsRemaining)}-${Math.ceil(fuelData.lapsRemaining)} LAPS`;
 
   // If no data (avgLaps is 0), show --
   if ((fuelData.avgLaps || 0) <= 0) {

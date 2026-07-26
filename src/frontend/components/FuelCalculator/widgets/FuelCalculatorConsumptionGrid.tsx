@@ -6,6 +6,7 @@ import {
 } from '@irdashies/context';
 import { useStore } from 'zustand';
 import type { FuelCalculation, FuelCalculatorSettings } from '../types';
+import { calculateStrategy } from '../fuelCalculations';
 
 interface FuelCalculatorWidgetProps {
   fuelData: FuelCalculation | null;
@@ -30,13 +31,16 @@ export const FuelCalculatorConsumptionGrid: React.FC<
   FuelCalculatorWidgetProps
 > = ({
   fuelData,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   displayData,
   settings,
   widgetId,
   customStyles,
   compactMode,
   predictiveUsage,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   liveFuelData,
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   liveFuelLevel,
 }) => {
   // Check if we are in a testing/practice session
@@ -79,15 +83,12 @@ export const FuelCalculatorConsumptionGrid: React.FC<
   };
 
   // Check for "Offline Testing" or "Practice"
-  const isTesting =
-    sessionType === 'Offline Testing' || sessionType === 'Practice';
+  // const isTesting = sessionType === 'Offline Testing';
   const isRace = sessionType === 'Race';
 
   // Use frozen displayData directly - it is already snapshotted by the parent
   // We do NOT want live updates here.
-  const lapsRemainingToUse = displayData?.lapsRemaining || 0;
-  const currentLap = displayData?.currentLap || 0;
-  const fuelLevelToUse = displayData?.fuelLevel ?? 0;
+  const currentLap = fuelData?.currentLap || 0;
   // Check for White (0x0002) or Checkered (0x0004) flag
   const isFinalLapOrFinished =
     sessionFlags && (sessionFlags & 0x0002 || sessionFlags & 0x0004);
@@ -99,11 +100,11 @@ export const FuelCalculatorConsumptionGrid: React.FC<
   }
 
   // Grid Data (Frozen Values from Parent)
-  const avg = displayData?.avgLaps || displayData?.avg10Laps || 0;
-  const max = displayData?.maxLapUsage || 0;
-  const last = displayData?.lastLapUsage || 0;
-  const min = displayData?.minLapUsage || 0;
-  const qual = displayData?.maxQualify || 0;
+  const avg = fuelData?.avgLaps || fuelData?.avg10Laps || 0;
+  const max = fuelData?.maxLapUsage || 0;
+  const last = fuelData?.lastLapUsage || 0;
+  const min = fuelData?.minLapUsage || 0;
+  const qual = fuelData?.maxQualify || 0;
   // Current usage can be live if wanted, but user asked to remove "Real Time Update"
   // so we use the frozen LAST lap usage or similar?
   // actually "CURR" usually means "Current Lap Projection".
@@ -124,77 +125,10 @@ export const FuelCalculatorConsumptionGrid: React.FC<
   // If parent logic freezes it, then `displayData.projectedLapUsage` will be frozen too.
   // Use frozen displayData for stable columns
   // BUT use predictiveUsage (passed from parent's throttled trigger) for the CURR column
-  const currentUsage = predictiveUsage ?? displayData?.projectedLapUsage ?? 0;
+  const currentUsage = predictiveUsage ?? fuelData?.projectedLapUsage ?? 0;
 
-  // Calculate derivates (Laps, Refuel, Finish)
-  const calcCol = (
-    usage: number,
-    contextTotalLaps: number,
-    contextLapsRemaining: number,
-    contextFuelLevel: number
-  ) => {
-    if (usage <= 0)
-      return {
-        laps: NaN,
-        refuel: 0,
-        totalReq: 0,
-        isDeficit: false,
-        isValid: false,
-        hideRefuel: true,
-      };
-
-    // Laps calculation
-    const laps = contextFuelLevel / usage;
-
-    // Total Required for Race (Distance * Usage)
-    // We use contextTotalLaps which might be live or frozen depending on the row
-    const totalReq = contextTotalLaps * usage;
-
-    // Finish (Fuel at finish) -> This is effectively our BALANCE for coloring
-    // Formula: CurrentFuel - FuelNeeded
-    // FuelNeeded = LapsRemaining * Usage
-    const fuelNeeded = contextLapsRemaining * usage;
-    const balance = contextFuelLevel - fuelNeeded;
-
-    // Logic for Refuel Column:
-    // If Balance < 0 (Deficit): Show POSITIVE amount to ADD.
-    // If Balance >= 0 (Surplus): Show POSITIVE amount EXTRA.
-    const refuelValue = balance < 0 ? Math.abs(balance) : balance;
-    const isDeficit = balance < 0;
-
-    // If testing, hide Refuel and Finish (return 0/invalid)
-    if (isTesting) {
-      return {
-        laps: laps,
-        refuel: 0,
-        totalReq: 0,
-        isDeficit: false,
-        isValid: true,
-        hideRefuel: true,
-      };
-    }
-
-    return {
-      laps: laps, // number
-      refuel: refuelValue, // number (absolute value to show)
-      totalReq: totalReq, // number
-      isDeficit: isDeficit, // boolean
-      isValid: true,
-      hideRefuel: false,
-    };
-  };
-
-  // Frozen Context Data (for static rows)
-  const frozenFuelLevel = fuelLevelToUse;
-  const frozenLapsRemaining = lapsRemainingToUse;
-  const frozenTotalLaps = effectiveTotalLaps; // Already based on displayData (frozen)
-
-  // Live Context Data (for CURR row)
-  // We prefer liveFuelData if available to get the most up-to-date 'lapsRemaining' and 'totalLaps'
-  const liveTotalLaps = liveFuelData?.totalLaps ?? frozenTotalLaps;
-  // If we are finished, clamp live remaining to 0 or appropriate
-  const liveLapsRemaining = liveFuelData?.lapsRemaining ?? frozenLapsRemaining;
-  const dataLiveFuelLevel = liveFuelLevel || frozenFuelLevel;
+  const raceLapsRemaining = fuelData?.lapsRemaining ?? 1;
+  const fuelLevel = fuelData?.fuelLevel ?? 0;
 
   // Header Logic: Usually headers should be stable too if the grid is stable,
   // but "Total Laps" changing is a major event.
@@ -204,43 +138,51 @@ export const FuelCalculatorConsumptionGrid: React.FC<
   // But if the rows below (AVG/MAX) are calculating based on OLD length, then header showing NEW length is confusing.
   // Verdict: Header should match the rows context. Since most rows are frozen, Header uses frozenTotalLaps.
 
-  const avgData = calcCol(
+  const safetyMargin = settings?.safetyMargin ?? 0.3;
+  const trackPct = fuelData?.lapDistPct ?? 0;
+  const avgData = calculateStrategy(
     avg,
-    frozenTotalLaps,
-    frozenLapsRemaining,
-    frozenFuelLevel
+    raceLapsRemaining,
+    trackPct,
+    fuelLevel,
+    safetyMargin
   );
-  const maxData = calcCol(
+  const maxData = calculateStrategy(
     max,
-    frozenTotalLaps,
-    frozenLapsRemaining,
-    frozenFuelLevel
+    raceLapsRemaining,
+    trackPct,
+    fuelLevel,
+    safetyMargin
   );
-  const lastData = calcCol(
+  const lastData = calculateStrategy(
     last,
-    frozenTotalLaps,
-    frozenLapsRemaining,
-    frozenFuelLevel
+    raceLapsRemaining,
+    trackPct,
+    fuelLevel,
+    safetyMargin
   );
-  const minData = calcCol(
+  const minData = calculateStrategy(
     min,
-    frozenTotalLaps,
-    frozenLapsRemaining,
-    frozenFuelLevel
+    raceLapsRemaining,
+    trackPct,
+    fuelLevel,
+    safetyMargin
   );
-  const qualData = calcCol(
+  const qualData = calculateStrategy(
     qual,
-    frozenTotalLaps,
-    frozenLapsRemaining,
-    frozenFuelLevel
+    raceLapsRemaining,
+    trackPct,
+    fuelLevel,
+    safetyMargin
   );
 
   // CURR uses LIVE context
-  const currentData = calcCol(
+  const currentData = calculateStrategy(
     currentUsage,
-    liveTotalLaps,
-    liveLapsRemaining,
-    dataLiveFuelLevel
+    raceLapsRemaining,
+    trackPct,
+    fuelLevel,
+    safetyMargin
   );
   if (!fuelData) return null;
 
@@ -286,7 +228,7 @@ export const FuelCalculatorConsumptionGrid: React.FC<
           className={`font-bold text-slate-400 flex flex-col justify-center items-center leading-none ${compactMode === 'ultra' ? 'px-1 py-0' : compactMode === 'compact' ? 'px-1 py-1' : 'px-1 py-2'}`}
           style={{ fontSize: labelFontSize }}
         >
-          <div style={{ fontSize: '0.8em', opacity: 0.7 }}>IN RACE</div>
+          <div style={{ fontSize: '0.9em', opacity: 0.7 }}>IN RACE</div>
           <div style={{ color: '#fff' }}>
             {currentLap}
             {isRace && effectiveTotalLaps > 0

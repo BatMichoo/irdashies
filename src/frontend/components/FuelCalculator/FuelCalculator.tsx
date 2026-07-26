@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo } from 'react';
 import {
   useSessionVisibility,
   useTelemetryValue,
@@ -27,6 +27,7 @@ type FuelCalculatorProps = Partial<FuelCalculatorSettings>;
 
 const EMPTY_DATA: FuelCalculation = {
   fuelLevel: 0,
+  lapDistPct: 0,
   lastLapUsage: 0,
   avgLaps: 0,
   avg10Laps: 0,
@@ -146,64 +147,32 @@ export const FuelCalculator = (props: FuelCalculatorProps) => {
   }, [settings.layoutTree]);
 
   const isOnTrack = useTelemetryValue('IsOnTrack');
-
   const fuelData = useFuelCalculation(safetyMargin, settings);
-
-  const currentFuelLevel = useTelemetryValue('FuelLevel');
 
   const predictiveUsage = fuelData?.projectedLapUsage || 0;
   const qualifyConsumption = fuelData?.maxQualify || null;
 
-  const displayData = useMemo(() => {
-    if (!fuelData) return EMPTY_DATA;
-    return fuelData;
-  }, [fuelData]);
-
-  // Frozen snapshot of fuel data, updated only on lap changes.
-  // Used by grid/scenarios/target widgets so pit-entry numbers stay
-  // stable while live fuel level changes during refuelling.
-  const [frozenFuelData, setFrozenFuelData] = useState(fuelData);
-
-  useEffect(() => {
-    if (fuelData) {
-      setFrozenFuelData((prev) => {
-        // Update snapshot if:
-        // 1. We don't have a previous snapshot
-        // 2. The current lap has changed
-        // 3. The last finished lap count has changed (crucial for catching the update after crossing the line)
-        if (
-          !prev ||
-          prev.currentLap !== fuelData.currentLap ||
-          prev.lastFinishedLap !== fuelData.lastFinishedLap
-        ) {
-          return fuelData;
-        }
-        return prev;
-      });
-    }
-  }, [fuelData]);
-
   // Frozen Display Data (for Grid)
   const frozenDisplayData = useMemo(() => {
-    if (!frozenFuelData) {
+    if (!fuelData) {
       return EMPTY_DATA;
     }
 
-    const level = frozenFuelData.fuelLevel;
-    const avgFuelPerLap = frozenFuelData.avgLaps || frozenFuelData.lastLapUsage;
+    const level = fuelData.fuelLevel;
+    const avgFuelPerLap = fuelData.avgLaps || fuelData.lastLapUsage;
     const lapsWithFuel = avgFuelPerLap > 0 ? level / avgFuelPerLap : 0;
-    const fuelAtFinish = level - frozenFuelData.lapsRemaining * avgFuelPerLap;
+    const fuelAtFinish = level - fuelData.lapsRemaining * avgFuelPerLap;
 
     return {
-      ...frozenFuelData,
+      ...fuelData,
       fuelLevel: level,
       lapsWithFuel,
-      pitWindowClose: frozenFuelData.currentLap + lapsWithFuel - 1,
+      pitWindowClose: fuelData.currentLap + lapsWithFuel - 1,
       fuelAtFinish,
-      targetScenarios: frozenFuelData.targetScenarios,
+      targetScenarios: fuelData.targetScenarios,
       maxQualify: qualifyConsumption,
     };
-  }, [frozenFuelData, qualifyConsumption]);
+  }, [fuelData, qualifyConsumption]);
 
   const hasSettings = !!settings;
 
@@ -218,7 +187,7 @@ export const FuelCalculator = (props: FuelCalculatorProps) => {
     const widgetProps = {
       widgetId: widgetId,
       fuelData: fuelData,
-      displayData: displayData,
+      displayData: fuelData as FuelCalculation,
       fuelUnits: fuelUnits,
       settings: settings,
       customStyles: widgetStyles,
@@ -234,9 +203,9 @@ export const FuelCalculator = (props: FuelCalculatorProps) => {
         return (
           <FuelCalculatorConsumptionGrid
             {...widgetProps}
-            fuelData={frozenFuelData}
+            fuelData={fuelData}
             liveFuelData={fuelData}
-            liveFuelLevel={currentFuelLevel}
+            liveFuelLevel={fuelData?.fuelLevel}
             predictiveUsage={predictiveUsage}
             displayData={frozenDisplayData}
           />
@@ -245,7 +214,7 @@ export const FuelCalculator = (props: FuelCalculatorProps) => {
         return (
           <FuelCalculatorPitScenarios
             {...widgetProps}
-            fuelData={frozenFuelData}
+            fuelData={fuelData}
             displayData={frozenDisplayData}
           />
         );
@@ -258,7 +227,7 @@ export const FuelCalculator = (props: FuelCalculatorProps) => {
         return (
           <FuelCalculatorTargetMessage
             {...widgetProps}
-            fuelData={frozenFuelData}
+            fuelData={fuelData}
             displayData={frozenDisplayData}
           />
         );
@@ -269,8 +238,8 @@ export const FuelCalculator = (props: FuelCalculatorProps) => {
         return (
           <FuelCalculatorEconomyPredict
             {...widgetProps}
-            fuelData={frozenFuelData}
-            displayData={displayData}
+            fuelData={fuelData}
+            displayData={fuelData as FuelCalculation}
           />
         );
       default:
@@ -317,7 +286,7 @@ export const FuelCalculator = (props: FuelCalculatorProps) => {
     return null;
   };
 
-  const currentFuelStatus = displayData.fuelStatus || 'safe';
+  const currentFuelStatus = fuelData?.fuelStatus || 'safe';
   const showFuelStatusBorder = settings.showFuelStatusBorder ?? true;
 
   // Extract hex codes for inline style
