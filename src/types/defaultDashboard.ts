@@ -94,6 +94,9 @@ export const defaultDashboard: {
           numLaps: 5,
           timeFormat: 'mixed',
         },
+        lapCount: {
+          enabled: false,
+        },
         driverStandings: {
           buffer: 3,
           numNonClassDrivers: 3,
@@ -248,6 +251,7 @@ export const defaultDashboard: {
           'compound',
           'lapTimeDeltas',
           'avgLapTime',
+          'lapCount',
           'pushToPass',
         ],
         driverTag: { enabled: false },
@@ -819,15 +823,15 @@ export const defaultDashboard: {
         showLapsRemaining: true,
         showMin: true,
         showCurrentLap: true,
-        showLastLap: true,
+        showLastLap: false,
         show3LapAvg: true,
-        show10LapAvg: true,
+        show10LapAvg: false,
         showMax: true,
         showPitWindow: true,
         showEnduranceStrategy: true,
         showFuelScenarios: true,
         showFuelRequired: true,
-        showQualifyConsumption: true,
+        showQualifyConsumption: false,
         showFuelHistory: true,
         fuelHistoryType: 'histogram',
         safetyMargin: 0,
@@ -865,7 +869,15 @@ export const defaultDashboard: {
             },
           ],
         },
-        consumptionGridOrder: ['curr', 'avg', 'max', 'last', 'min', 'qual'],
+        consumptionGridOrder: [
+          'curr',
+          'avg',
+          'max',
+          'min',
+          'last',
+          'avg10',
+          'qual',
+        ],
         avgLapsCount: 5,
         fuelStatusThresholds: {
           green: 60,
@@ -1013,6 +1025,7 @@ export const defaultDashboard: {
         history: {
           enabled: true,
           count: 10,
+          style: 'list',
         },
         background: {
           opacity: 80,
@@ -1051,6 +1064,43 @@ export const defaultDashboard: {
           openQualify: true,
           practice: true,
           offlineTesting: true,
+        },
+      },
+    },
+    {
+      id: 'battle',
+      enabled: false,
+      layout: {
+        x: 300,
+        y: 100,
+        width: 460,
+        height: 100,
+      },
+      config: {
+        background: { opacity: 80 },
+        showOnlyWhenOnTrack: false,
+        position: { enabled: true },
+        carNumber: { enabled: true },
+        driverName: { enabled: true },
+        stint: { enabled: true },
+        lastTime: { enabled: true, timeFormat: 'mixed' },
+        speed: { enabled: false, unit: 'auto' },
+        gap: { enabled: true, decimalPlaces: 2 },
+        displayOrder: [
+          'position',
+          'carNumber',
+          'driverName',
+          'stint',
+          'lastTime',
+          'speed',
+          'gap',
+        ],
+        sessionVisibility: {
+          race: true,
+          loneQualify: false,
+          openQualify: false,
+          practice: false,
+          offlineTesting: false,
         },
       },
     },
@@ -1290,8 +1340,7 @@ export function getWidgetDefaultConfig<K extends keyof WidgetConfigMap>(
   id: K
 ): WidgetConfigMap[K] {
   const widget = defaultDashboard.widgets.find((w) => w.id === id) as
-    | TypedDashboardWidget<K>
-    | undefined;
+    TypedDashboardWidget<K> | undefined;
   if (!widget) throw new Error(`No default config found for widget: ${id}`);
   return widget.config;
 }
