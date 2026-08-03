@@ -154,6 +154,24 @@ export const defaultDashboard: {
           trackName: {
             enabled: false,
           },
+          fuelLevel: {
+            enabled: false,
+          },
+          lastLap: {
+            enabled: false,
+          },
+          bestLap: {
+            enabled: false,
+          },
+          topSpeed: {
+            enabled: false,
+          },
+          manufacturerPosition: {
+            enabled: false,
+          },
+          classRank: {
+            enabled: false,
+          },
           displayOrder: [
             'sessionName',
             'sessionTime',
@@ -168,6 +186,12 @@ export const defaultDashboard: {
             'trackTemperature',
             'wind',
             'trackName',
+            'fuelLevel',
+            'lastLap',
+            'bestLap',
+            'topSpeed',
+            'manufacturerPosition',
+            'classRank',
           ],
         },
         footerBar: {
@@ -214,6 +238,24 @@ export const defaultDashboard: {
           trackName: {
             enabled: false,
           },
+          fuelLevel: {
+            enabled: false,
+          },
+          lastLap: {
+            enabled: false,
+          },
+          bestLap: {
+            enabled: false,
+          },
+          topSpeed: {
+            enabled: false,
+          },
+          manufacturerPosition: {
+            enabled: false,
+          },
+          classRank: {
+            enabled: false,
+          },
           displayOrder: [
             'sessionName',
             'sessionTime',
@@ -228,6 +270,12 @@ export const defaultDashboard: {
             'trackTemperature',
             'wind',
             'trackName',
+            'fuelLevel',
+            'lastLap',
+            'bestLap',
+            'topSpeed',
+            'manufacturerPosition',
+            'classRank',
           ],
         },
         showOnlyWhenOnTrack: false,
@@ -326,6 +374,7 @@ export const defaultDashboard: {
           size: 100,
           showspeed: true,
           showspeedunit: true,
+          swapSpeedUnit: false,
           unit: 'auto',
         },
         abs: {
@@ -532,6 +581,24 @@ export const defaultDashboard: {
           trackName: {
             enabled: false,
           },
+          fuelLevel: {
+            enabled: false,
+          },
+          lastLap: {
+            enabled: false,
+          },
+          bestLap: {
+            enabled: false,
+          },
+          topSpeed: {
+            enabled: false,
+          },
+          manufacturerPosition: {
+            enabled: false,
+          },
+          classRank: {
+            enabled: false,
+          },
           displayOrder: [
             'sessionName',
             'sessionTime',
@@ -546,6 +613,12 @@ export const defaultDashboard: {
             'trackTemperature',
             'wind',
             'trackName',
+            'fuelLevel',
+            'lastLap',
+            'bestLap',
+            'topSpeed',
+            'manufacturerPosition',
+            'classRank',
           ],
         },
         footerBar: {
@@ -592,6 +665,24 @@ export const defaultDashboard: {
           trackName: {
             enabled: false,
           },
+          fuelLevel: {
+            enabled: false,
+          },
+          lastLap: {
+            enabled: false,
+          },
+          bestLap: {
+            enabled: false,
+          },
+          topSpeed: {
+            enabled: false,
+          },
+          manufacturerPosition: {
+            enabled: false,
+          },
+          classRank: {
+            enabled: false,
+          },
           displayOrder: [
             'sessionName',
             'sessionTime',
@@ -606,6 +697,12 @@ export const defaultDashboard: {
             'trackTemperature',
             'wind',
             'trackName',
+            'fuelLevel',
+            'lastLap',
+            'bestLap',
+            'topSpeed',
+            'manufacturerPosition',
+            'classRank',
           ],
         },
         showOnlyWhenOnTrack: false,
