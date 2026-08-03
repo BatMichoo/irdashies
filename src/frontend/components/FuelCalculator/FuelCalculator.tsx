@@ -164,14 +164,12 @@ export const FuelCalculator = (props: FuelCalculatorProps) => {
 
     const level = fuelData.fuelLevel;
     const avgFuelPerLap = fuelData.avgLaps || fuelData.lastLapUsage;
-    const lapsWithFuel = avgFuelPerLap > 0 ? level / avgFuelPerLap : 0;
     const fuelAtFinish = level - fuelData.lapsRemaining * avgFuelPerLap;
 
     return {
       ...fuelData,
-      fuelLevel: level,
-      lapsWithFuel,
-      pitWindowClose: fuelData.currentLap + lapsWithFuel - 1,
+      // fuelLevel: level,
+      // lapsWithFuel,
       fuelAtFinish,
       targetScenarios: fuelData.targetScenarios,
       maxQualify: qualifyConsumption,

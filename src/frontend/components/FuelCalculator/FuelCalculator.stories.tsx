@@ -5,10 +5,10 @@ import {
   DynamicTelemetrySelector,
   TelemetryDecorator,
 } from '@irdashies/storybook';
-import { useFuelStore } from './FuelStore';
+import { useReferenceFuelStore } from '@irdashies/context';
 import { defaultFuelCalculatorSettings } from './defaults';
-import type { FuelCalculation, FuelLapData } from './types';
-import type { LayoutNode } from '@irdashies/types';
+import type { FuelCalculation } from './types';
+import type { LayoutNode, ReferenceFuel } from '@irdashies/types';
 
 const OverlayFrame = ({
   children,
@@ -375,35 +375,35 @@ const MockFuelDataProvider = ({
   children: ReactNode;
   lapCount?: number;
 }) => {
-  const addLapData = useFuelStore((state) => state.addLapData);
-  const updateLapCrossing = useFuelStore((state) => state.updateLapCrossing);
-  const clearAllData = useFuelStore((state) => state.clearAllData);
-
   useEffect(() => {
-    clearAllData();
-
     const variations = [
       -0.3, 0, 0.05, -0.02, 0.02, -0.05, 0.08, 0, 0.01, -0.06, 0.15, -0.1, 0.03,
       -0.02, 0.05,
     ];
-    const mockLaps: FuelLapData[] = Array.from(
+    const mockLaps: ReferenceFuel[] = Array.from(
       { length: lapCount },
-      (_, index) => ({
-        lapNumber: index + 1,
-        fuelUsed: 2.1 + variations[index % variations.length],
-        lapTime: 90 + (index % 3),
-        isGreenFlag: true,
-        isValidForCalc: true,
-        isOutLap: false,
-        timestamp: Date.UTC(2025, 0, 1) + index * 100000,
-      })
+      (_, index) => {
+        const fuelUsed = 2.1 + variations[index % variations.length];
+        return {
+          startFuel: 5.0,
+          finishFuel: 5.0 - fuelUsed,
+          fuelConsumed: new Float32Array([]),
+          pointPos: new Float32Array([]),
+          tangents: new Float32Array([]),
+          interval: 0.01,
+          pointsCount: 100,
+          lastTrackedPct: 1.0,
+          isCleanLap: true,
+        };
+      }
     );
 
-    mockLaps.forEach((lap) => addLapData(lap));
-    updateLapCrossing(0.1, 35.5, 2700, 31, false);
+    useReferenceFuelStore.setState({ lapHistory: mockLaps });
 
-    return () => clearAllData();
-  }, [addLapData, clearAllData, lapCount, updateLapCrossing]);
+    return () => {
+      useReferenceFuelStore.setState({ lapHistory: [] });
+    };
+  }, [lapCount]);
 
   return <>{children}</>;
 };

@@ -2,7 +2,6 @@ import type {
   DashboardBridge,
   IrSdkBridge,
   PitLaneBridge,
-  FuelCalculatorBridge,
   ReferenceLapBridge,
   LogBridge,
   KeybindingsBridge,
@@ -16,7 +15,6 @@ declare global {
     irsdkBridge: IrSdkBridge;
     dashboardBridge: DashboardBridge;
     pitLaneBridge: PitLaneBridge;
-    fuelCalculatorBridge: FuelCalculatorBridge;
     referenceLapsBridge: ReferenceLapBridge;
     referenceFuelBridge: ReferenceFuelBridge;
     logBridge: LogBridge;

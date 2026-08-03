@@ -1,12 +1,12 @@
+import { ReferenceFuel } from '@irdashies/types';
 import { formatFuel } from '../fuelCalculations';
-import { FuelLapData } from '../types';
 
 export interface ConsumptionGraphData {
   maxFuel: number;
   avgFuel: number;
   fuelValues: number[];
   minFuel?: number;
-  laps?: FuelLapData[];
+  laps?: ReferenceFuel[];
 }
 
 interface ConsumptionGraphWidgetProps {

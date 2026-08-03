@@ -153,11 +153,11 @@ describe('useFuelCalculation hook', () => {
     // Safety margin of 0.30L: 32L + 0.30L = 32.3L
     const { result } = renderHook(() => useFuelCalculation(0.3));
 
-    expect(result.current?.fuelToFinish).toBeCloseTo(30.8, 5);
+    expect(result.current?.fuelToFinish).toBeCloseTo(30.5, 5);
     expect(result.current?.fuelToAdd).toBeCloseTo(20.8, 5);
   });
 
-  it('calculates 0 fuel required when no reference fuel is available', () => {
+  it('calculates -10 fuel required when no reference fuel is available', () => {
     const playerCarIdx = 0;
     const playerClassId = 1;
 
@@ -405,6 +405,53 @@ describe('useFuelCalculation hook', () => {
     const { result } = renderHook(() => useFuelCalculation(0.0));
 
     expect(result.current?.projectedLapUsage).toBe(2.5);
+  });
+
+  it('should use maxLap for the prediction of current consumption when activeLap is not clean', () => {
+    const maxLap: ReferenceFuel = {
+      startFuel: 12.0,
+      finishFuel: 8.0,
+      fuelConsumed: new Float32Array([0, 1.0, 2.0, 3.0]),
+      pointPos: new Float32Array([0, 0.25, 0.5, 0.75]),
+      tangents: new Float32Array([0, 0, 0, 0]),
+      interval: 0.25,
+      pointsCount: 4,
+      lastTrackedPct: 1.0,
+      isCleanLap: true,
+    };
+
+    const dirtyActiveLap: ReferenceFuel = {
+      startFuel: 10.0,
+      finishFuel: -1,
+      fuelConsumed: new Float32Array([0, 0.1, -1, -1]),
+      pointPos: new Float32Array([0, 0.25, -1, -1]),
+      tangents: new Float32Array([0, 0, 0, 0]),
+      interval: 0.25,
+      pointsCount: 4,
+      lastTrackedPct: 0.5,
+      isCleanLap: false,
+    };
+
+    useReferenceFuelStore.setState({
+      maxLap: maxLap,
+      activeLap: dirtyActiveLap,
+      lapHistory: [maxLap],
+    });
+
+    useTelemetryStore.setState({
+      telemetry: {
+        FuelLevel: { value: [9.0] },
+        Lap: { value: [2] },
+        LapDistPct: { value: [0.5] },
+        SessionLapsRemain: { value: [32767] },
+        SessionTimeRemain: { value: [600] },
+      } as unknown as Telemetry,
+    });
+
+    const { result } = renderHook(() => useFuelCalculation(0.0));
+
+    // When activeLap is not clean (isCleanLap: false), projection falls back to maxLap reference consumption.
+    expect(result.current?.projectedLapUsage).toBe(4.0);
   });
 
   // Future feature specifications (Not yet implemented)

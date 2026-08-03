@@ -60,6 +60,7 @@ export interface ReferenceFuelRegistryState {
   trackLength: number | null;
   interval: number;
   pointsCount: number;
+  tankSize: number;
 
   initialize: (
     bridge: ReferenceFuelBridge,
@@ -67,7 +68,8 @@ export interface ReferenceFuelRegistryState {
     trackId: number,
     trackLength: number,
     classList: number[],
-    playerClassId: number
+    playerClassId: number,
+    tankSize: number
   ) => Promise<void>;
 
   collectBulkData: (
@@ -79,6 +81,8 @@ export interface ReferenceFuelRegistryState {
     playerOnPitRoad: boolean,
     playerFuelLevel: number
   ) => void;
+
+  getAvgConsumption: (numLaps?: number, usePersistence?: boolean) => number;
 
   getFuelStats: (
     numLaps: number,
@@ -108,6 +112,7 @@ export const useReferenceFuelStore = create<ReferenceFuelRegistryState>(
     trackLength: null,
     interval: 0,
     pointsCount: 0,
+    tankSize: -1,
 
     initialize: async (
       bridge,
@@ -115,7 +120,8 @@ export const useReferenceFuelStore = create<ReferenceFuelRegistryState>(
       trackId,
       trackLength,
       classList,
-      playerClassId
+      playerClassId,
+      tankSize
     ) => {
       const pointsCount = Math.ceil(trackLength / TARGET_SPACING_METERS);
       const interval = parseFloat((1 / pointsCount).toFixed(6));
@@ -150,6 +156,7 @@ export const useReferenceFuelStore = create<ReferenceFuelRegistryState>(
         lapHistory: [],
         minLap: EMPTY_FUEL_LAP,
         maxLap: EMPTY_FUEL_LAP,
+        tankSize: tankSize,
       });
     },
 
@@ -265,36 +272,38 @@ export const useReferenceFuelStore = create<ReferenceFuelRegistryState>(
       }
     },
 
-    getFuelStats: (numLaps: number, usePersistence: boolean) => {
-      const { lapHistory, persistedLap, minLap, maxLap } = get();
+    getAvgConsumption: (numLaps = 0, usePersistence = false) => {
+      const { lapHistory, persistedLap } = get();
 
       if (usePersistence || lapHistory.length === 0) {
         const hasPersisted = persistedLap && persistedLap.startFuel > 0;
-        const fallbackLap = hasPersisted ? persistedLap : EMPTY_FUEL_LAP;
-        const fallbackConsumption = hasPersisted
+        return hasPersisted
           ? persistedLap.startFuel - persistedLap.finishFuel
           : 0;
-
-        return {
-          minLap: fallbackLap,
-          maxLap: fallbackLap,
-          avgConsumption: fallbackConsumption,
-        };
       }
 
       const laps = numLaps > 0 ? lapHistory.slice(-numLaps) : lapHistory;
+      if (laps.length === 0) return 0;
 
       let totalConsumption = 0;
-
       for (const lap of laps) {
-        const consumption = lap.startFuel - lap.finishFuel;
-        totalConsumption += consumption;
+        totalConsumption += lap.startFuel - lap.finishFuel;
       }
 
+      return totalConsumption / laps.length;
+    },
+
+    getFuelStats: (numLaps: number, usePersistence: boolean) => {
+      const { minLap, maxLap, persistedLap, lapHistory, getAvgConsumption } =
+        get();
+      const hasPersisted = persistedLap && persistedLap.startFuel > 0;
+      const fallbackLap = hasPersisted ? persistedLap : EMPTY_FUEL_LAP;
+      const isHistoryEmpty = lapHistory.length === 0;
+
       return {
-        minLap,
-        maxLap,
-        avgConsumption: totalConsumption / laps.length,
+        minLap: usePersistence || isHistoryEmpty ? fallbackLap : minLap,
+        maxLap: usePersistence || isHistoryEmpty ? fallbackLap : maxLap,
+        avgConsumption: getAvgConsumption(numLaps, usePersistence),
       };
     },
 
@@ -381,6 +390,7 @@ export const useReferenceFuelStore = create<ReferenceFuelRegistryState>(
         trackLength: null,
         interval: 0,
         pointsCount: 0,
+        tankSize: -1,
       });
     },
   })

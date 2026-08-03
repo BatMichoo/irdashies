@@ -27,6 +27,7 @@ export const useReferenceFuelStoreUpdater = (bridge: ReferenceFuelBridge) => {
     drivers: [] as Driver[],
     paceCarIdx: -1,
     playerCarIdx: -1,
+    tankSize: -1,
   });
 
   useEffect(() => {
@@ -59,6 +60,7 @@ export const useReferenceFuelStoreUpdater = (bridge: ReferenceFuelBridge) => {
           drivers: [] as Driver[],
           paceCarIdx: -1,
           playerCarIdx: -1,
+          tankSize: -1,
         });
         return;
       }
@@ -72,6 +74,9 @@ export const useReferenceFuelStoreUpdater = (bridge: ReferenceFuelBridge) => {
       const paceCarIdx = session.DriverInfo.PaceCarIdx;
       const drivers = session.DriverInfo.Drivers || [];
       const playerCarIdx = session.DriverInfo.DriverCarIdx;
+      const tankSizeMax = session.DriverInfo.DriverCarFuelMaxLtr;
+      const tankPct = session.DriverInfo.DriverCarMaxFuelPct;
+      const tankSize = tankSizeMax * tankPct;
 
       const lengthStr = session.WeekendInfo.TrackLength;
       const [val, unit] = lengthStr?.split(' ') ?? [];
@@ -105,7 +110,8 @@ export const useReferenceFuelStoreUpdater = (bridge: ReferenceFuelBridge) => {
           trackId,
           trackLength,
           classList,
-          playerClassId
+          playerClassId,
+          tankSize
         );
 
         Object.assign(s, {
@@ -116,6 +122,7 @@ export const useReferenceFuelStoreUpdater = (bridge: ReferenceFuelBridge) => {
           drivers,
           paceCarIdx,
           playerCarIdx,
+          tankSize,
         });
       } else {
         s.drivers = drivers;
@@ -151,7 +158,8 @@ export const useReferenceFuelStoreUpdater = (bridge: ReferenceFuelBridge) => {
           s.trackId,
           s.trackLength,
           classList,
-          playerClassId
+          playerClassId,
+          s.tankSize
         );
         s.sessionNum = sessionNum;
       }

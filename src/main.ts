@@ -11,7 +11,6 @@ import {
   dashboardBridge,
 } from './app/bridge/dashboard/dashboardBridge';
 import { setupPitLaneBridge } from './app/bridge/pitLaneBridge';
-import { setupFuelCalculatorBridge } from './app/bridge/fuelCalculatorBridge';
 import { OverlayManager } from './app/overlayManager';
 import {
   startComponentServer,
@@ -85,7 +84,6 @@ app.on('ready', async () => {
 
   // Setup IPC bridges
   setupLogBridge();
-  setupFuelCalculatorBridge();
   setupPitLaneBridge();
   setupReferenceLapsBridge();
   setupReferenceFuelBridge();

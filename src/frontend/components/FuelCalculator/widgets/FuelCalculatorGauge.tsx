@@ -1,6 +1,7 @@
 import React from 'react';
 import { formatFuel } from '../fuelCalculations';
 import type { FuelCalculation, FuelCalculatorSettings } from '../types';
+import { useReferenceFuelStore } from '@irdashies/context';
 
 interface FuelCalculatorWidgetProps {
   fuelData: FuelCalculation | null;
@@ -65,6 +66,7 @@ export const FuelCalculatorGauge: React.FC<FuelCalculatorWidgetProps> = ({
   customStyles,
   compactMode = 'off',
 }) => {
+  const tankSize = useReferenceFuelStore((state) => state.tankSize);
   // Custom style handling for separate label/value sizes
   const widgetStyle =
     customStyles || (widgetId && settings?.widgetStyles?.[widgetId]) || {};
@@ -82,7 +84,7 @@ export const FuelCalculatorGauge: React.FC<FuelCalculatorWidgetProps> = ({
   if (!fuelData) return null;
 
   const currentFuel = displayData.fuelLevel;
-  const tankCapacity = fuelData.fuelTankCapacity ?? 60;
+  const tankCapacity = tankSize ?? 60;
   const fuelPct = Math.min(
     100,
     Math.max(0, (currentFuel / tankCapacity) * 100)

@@ -230,6 +230,107 @@ export function calculateRefuelRequired(
   return fuelRequiredToFinish - fuelLevel;
 }
 
+/**
+ * Calculate the opening lap of the pit window
+ * Earliest lap to pit based on current lap, tank size, average consumption, and laps with fuel
+ */
+export function calculatePitWindowOpen(
+  currentLap: number,
+  tankSize: number,
+  avgFuelPerLap: number,
+  lapsWithFuel: number
+): number {
+  if (avgFuelPerLap <= 0 || tankSize <= 0) return 0;
+  return Math.floor(currentLap + tankSize / avgFuelPerLap - lapsWithFuel - 1);
+}
+
+/**
+ * Calculate the closing lap of the pit window
+ * Latest lap to pit before running out of fuel
+ */
+export function calculatePitWindowClose(
+  currentLap: number,
+  lapsWithFuel: number
+): number {
+  return currentLap + lapsWithFuel - 1;
+}
+
+/**
+ * Calculate the target fuel consumption per lap needed to finish the race
+ * on the fuel currently in the car.
+ *
+ * @param fuelLevel - Current fuel level in the car (litres)
+ * @param lapsRemaining - Estimated laps remaining in the session
+ * @returns Target consumption per lap, or 0 if lapsRemaining is not positive
+ */
+export function calculateTargetConsumption(
+  fuelLevel: number,
+  lapsRemaining: number
+): number {
+  if (lapsRemaining <= 0) return 0;
+  return fuelLevel / lapsRemaining;
+}
+
+/**
+ * Calculate the number of pit stops still required to finish the race.
+ *
+ * @param lapsRemaining - Estimated laps remaining in the session
+ * @param fuelConsumption - Average fuel consumption per lap (litres)
+ * @param fuelLevel - Current fuel level in the car (litres)
+ * @param tankSize - Maximum fuel tank capacity (litres)
+ * @returns Number of stops remaining (minimum 0), or 0 if tankSize is not positive
+ */
+export function calculateStopsRemaining(
+  lapsRemaining: number,
+  fuelConsumption: number,
+  fuelLevel: number,
+  tankSize: number
+): number {
+  if (tankSize <= 0) return 0;
+  return Math.max(
+    0,
+    Math.ceil((lapsRemaining * fuelConsumption - fuelLevel) / tankSize)
+  );
+}
+
+/**
+ * Calculate the three pit-stop target scenarios centred on the number of laps
+ * the current fuel load can cover.
+ *
+ * Generates a [-1, 0, +1] lap window around `floor(lapsWithFuel)`:
+ * - laps - 1: conservative (pit one lap earlier than fuel allows)
+ * - laps    : ideal (current fuel exactly covers the stint)
+ * - laps + 1: economy (must save fuel to extend one extra lap)
+ *
+ * @param fuelLevel   - Current fuel level in the car (litres)
+ * @param lapsWithFuel - Estimated laps the current fuel will last
+ * @returns Array of 3 scenario objects (fewer if centre laps ≤ 1)
+ */
+export function calculateTargetScenarios(
+  fuelLevel: number,
+  lapsWithFuel: number
+): { laps: number; fuelPerLap: number; isCurrentTarget: boolean }[] {
+  const centerLaps = Math.floor(lapsWithFuel);
+  if (centerLaps <= 0 || fuelLevel <= 0) return [];
+
+  return ([-1, 0, 1] as const)
+    .map((offset) => {
+      const laps = centerLaps + offset;
+      if (laps <= 0) return null;
+      return {
+        laps,
+        fuelPerLap: fuelLevel / laps,
+        isCurrentTarget: offset === 0,
+      };
+    })
+    .filter(
+      (
+        s
+      ): s is { laps: number; fuelPerLap: number; isCurrentTarget: boolean } =>
+        s !== null
+    );
+}
+
 export function calculateStrategy(
   consumption: number,
   lapsRemaining: number,
@@ -285,7 +386,13 @@ export function calculateProjectedLapUsage(
   lapDistPct: number,
   fallbackConsumption: number
 ): number {
-  if (!lastLap || lastLap.startFuel <= 0 || lastLap.pointsCount <= 0) {
+  if (
+    !lastLap ||
+    !lastLap.isCleanLap ||
+    lastLap.startFuel <= 0 ||
+    lastLap.finishFuel < 0 ||
+    lastLap.pointsCount <= 0
+  ) {
     return fallbackConsumption;
   }
 
@@ -294,11 +401,16 @@ export function calculateProjectedLapUsage(
     return fallbackConsumption;
   }
 
+  const isActiveLapValid =
+    activeLap &&
+    activeLap.isCleanLap &&
+    activeLap.startFuel > 0 &&
+    fuelLevel <= activeLap.startFuel;
+
   // 1. Fuel consumed so far on the current lap
-  const fuelConsumedSoFar =
-    activeLap && activeLap.startFuel > 0
-      ? Math.max(activeLap.startFuel - fuelLevel, 0)
-      : 0;
+  const fuelConsumedSoFar = isActiveLapValid
+    ? Math.max(activeLap.startFuel - fuelLevel, 0)
+    : 0;
 
   // 2. Find remaining consumption based on last lap reference using interpolation
   const interpolatedFuel = interpolateFuelAtPoint(lastLap, lapDistPct);
@@ -309,7 +421,7 @@ export function calculateProjectedLapUsage(
       : (1 - lapDistPct) * lastLapConsumption;
 
   // 3. Projected total consumption (fuel consumed so far + projected remaining)
-  if (activeLap && activeLap.startFuel > 0) {
+  if (isActiveLapValid) {
     return fuelConsumedSoFar + lastLapRemaining;
   }
 

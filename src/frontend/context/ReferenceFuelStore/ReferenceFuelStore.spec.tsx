@@ -88,6 +88,23 @@ describe('ReferenceFuelStore getFuelStats', () => {
     expect(statsAll.avgConsumption).toBe(2.5);
   });
 
+  it('should support direct minLap/maxLap state and getAvgConsumption calls', () => {
+    const lap1 = createMockFuelLap(5.0, 3.0); // 2.0 consumed
+    const lap2 = createMockFuelLap(5.0, 1.0); // 4.0 consumed
+    const lap3 = createMockFuelLap(5.0, 4.0); // 1.0 consumed
+
+    useReferenceFuelStore.setState({
+      lapHistory: [lap1, lap2, lap3],
+      minLap: lap3,
+      maxLap: lap2,
+    });
+
+    const store = useReferenceFuelStore.getState();
+    expect(store.minLap).toEqual(lap3);
+    expect(store.maxLap).toEqual(lap2);
+    expect(store.getAvgConsumption(3, false)).toBeCloseTo(2.33333, 4);
+  });
+
   it('should correctly calculate and save the average lap from history', async () => {
     const bridge = {
       saveReferenceFuel: vi.fn().mockResolvedValue(undefined),

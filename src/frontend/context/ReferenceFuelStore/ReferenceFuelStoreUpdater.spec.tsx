@@ -37,6 +37,8 @@ describe('useReferenceFuelStoreUpdater', () => {
           DriverCarIdx: 0,
           PaceCarIdx: -1,
           Drivers: [{ CarIdx: 0, CarClassID: 10 }],
+          DriverCarFuelMaxLtr: 10,
+          DriverCarMaxFuelPct: 1,
         },
       } as unknown as Session,
     });
@@ -47,6 +49,7 @@ describe('useReferenceFuelStoreUpdater', () => {
       2,
       5000,
       [10],
+      10,
       10
     );
   });

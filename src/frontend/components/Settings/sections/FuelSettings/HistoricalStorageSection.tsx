@@ -1,5 +1,5 @@
 import { FuelWidgetSettings } from '@irdashies/types';
-import { useFuelStore } from '../../../FuelCalculator/FuelStore';
+import { useReferenceFuelStore } from '@irdashies/context';
 import { SettingToggleRow } from '../../components/SettingToggleRow';
 import { SettingsSection } from '../../components/SettingSection';
 import logger from '@irdashies/utils/logger';
@@ -47,18 +47,13 @@ export const HistoricalStorageSection = ({
                   'Are you sure you want to clear ALL fuel history data? This cannot be undone.'
                 )
               ) {
-                window.fuelCalculatorBridge
-                  .clearAllHistory()
-                  .then(() => {
-                    // Also clear the frontend store memory
-                    useFuelStore.getState().clearAllData();
-                    useFuelStore.getState().setQualifyConsumption(null);
-                    alert('Fuel history cleared successfully.');
-                  })
-                  .catch((err) => {
-                    logger.error('Failed to clear fuel history:', err);
-                    alert('Failed to clear fuel history.');
-                  });
+                try {
+                  useReferenceFuelStore.getState().completeSession();
+                  alert('Fuel history cleared successfully.');
+                } catch (err: unknown) {
+                  logger.error('Failed to clear fuel history:', err);
+                  alert('Failed to clear fuel history.');
+                }
               }
             }}
             className="px-3 py-1 bg-red-500/10 hover:bg-red-500/20 text-red-400 border border-red-500/20 rounded text-xs transition-colors"

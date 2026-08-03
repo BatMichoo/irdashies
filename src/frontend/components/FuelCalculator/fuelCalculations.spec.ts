@@ -20,7 +20,12 @@ import {
   calculateConfidence,
   calculateFuelRequiredToFinish,
   calculateRefuelRequired,
+  calculatePitWindowOpen,
+  calculatePitWindowClose,
   calculateStrategy,
+  calculateTargetConsumption,
+  calculateStopsRemaining,
+  calculateTargetScenarios,
   calculateProjectedLapUsage,
   interpolateFuelAtPoint,
   FLAG_GREEN,
@@ -268,6 +273,32 @@ describe('fuelCalculations', () => {
     });
   });
 
+  describe('calculatePitWindowOpen', () => {
+    it('should calculate correct pit window open lap', () => {
+      // currentLap = 5, tankSize = 60, avgFuelPerLap = 3.0, lapsWithFuel = 10
+      // 5 + (60 / 3.0) - 10 - 1 = 5 + 20 - 10 - 1 = 14
+      expect(calculatePitWindowOpen(5, 60, 3.0, 10)).toBe(14);
+    });
+
+    it('should return 0 when avgFuelPerLap or tankSize is zero or negative', () => {
+      expect(calculatePitWindowOpen(5, 0, 3.0, 10)).toBe(0);
+      expect(calculatePitWindowOpen(5, 60, 0, 10)).toBe(0);
+    });
+
+    it('floors the result to a whole lap number', () => {
+      // currentLap = 1, tankSize = 50, avgFuelPerLap = 3.0, lapsWithFuel = 8
+      // raw = 1 + (50 / 3.0) - 8 - 1 = 1 + 16.666… - 9 = 8.666… → floor = 8
+      expect(calculatePitWindowOpen(1, 50, 3.0, 8)).toBe(8);
+    });
+  });
+
+  describe('calculatePitWindowClose', () => {
+    it('should calculate correct pit window close lap', () => {
+      // currentLap = 5, lapsWithFuel = 10 => 5 + 10 - 1 = 14
+      expect(calculatePitWindowClose(5, 10)).toBe(14);
+    });
+  });
+
   describe('calculateStrategy', () => {
     it('should return invalid strategy state if consumption is zero or negative', () => {
       const result = calculateStrategy(0, 10.5, 0.5, 12.0, 0.5);
@@ -470,6 +501,100 @@ describe('fuelCalculations', () => {
       // Evaluating Hermite Basis yields exactly 2.60725
       const val = interpolateFuelAtPoint(wrapLap, 0.95);
       expect(val).toBeCloseTo(2.60725, 5);
+    });
+  });
+
+  describe('calculateTargetConsumption', () => {
+    it('returns fuel/laps when given normal values', () => {
+      // 20L in the car, 11 laps remaining → target = 20 / 11 ≈ 1.818…
+      const result = calculateTargetConsumption(20, 11);
+      expect(result).toBeCloseTo(1.818, 3);
+    });
+
+    it('rounds to 2 decimal places as 1.82', () => {
+      const result = calculateTargetConsumption(20, 11);
+      expect(Number(result.toFixed(2))).toBe(1.82);
+    });
+
+    it('returns 0 when lapsRemaining is 0 to avoid division by zero', () => {
+      expect(calculateTargetConsumption(20, 0)).toBe(0);
+    });
+
+    it('returns 0 when lapsRemaining is negative', () => {
+      expect(calculateTargetConsumption(20, -5)).toBe(0);
+    });
+
+    it('returns 0 when fuelLevel is 0', () => {
+      expect(calculateTargetConsumption(0, 11)).toBe(0);
+    });
+
+    it('returns exact result for evenly divisible values', () => {
+      // 10L / 5 laps = exactly 2.0
+      expect(calculateTargetConsumption(10, 5)).toBe(2);
+    });
+  });
+
+  describe('calculateStopsRemaining', () => {
+    it('returns the number of stops required when fuel is insufficient', () => {
+      // 20 laps * 3L = 60L needed, 10L in tank, tankSize 30L
+      // deficit = 60 - 10 = 50L → ceil(50 / 30) = 2 stops
+      expect(calculateStopsRemaining(20, 3, 10, 30)).toBe(2);
+    });
+
+    it('returns 1 when exactly one full tank is needed', () => {
+      // 10 laps * 3L = 30L needed, 0L in tank, tankSize 30L → ceil(30 / 30) = 1
+      expect(calculateStopsRemaining(10, 3, 0, 30)).toBe(1);
+    });
+
+    it('returns 0 when there is enough fuel to finish without stopping', () => {
+      // 5 laps * 2L = 10L needed, 15L in tank → surplus, no stops needed
+      expect(calculateStopsRemaining(5, 2, 15, 30)).toBe(0);
+    });
+
+    it('returns 0 when tankSize is 0 to avoid division by zero', () => {
+      expect(calculateStopsRemaining(10, 3, 0, 0)).toBe(0);
+    });
+
+    it('returns 0 when tankSize is negative', () => {
+      expect(calculateStopsRemaining(10, 3, 0, -10)).toBe(0);
+    });
+  });
+
+  describe('calculateTargetScenarios', () => {
+    it('returns three scenarios centred on floor(lapsWithFuel)', () => {
+      // 30L, 12.7 laps worth → centre = 12
+      const result = calculateTargetScenarios(30, 12.7);
+      expect(result).toHaveLength(3);
+      expect(result.map((s) => s.laps)).toEqual([11, 12, 13]);
+    });
+
+    it('marks only the centre scenario as isCurrentTarget', () => {
+      const result = calculateTargetScenarios(30, 12.7);
+      expect(result.find((s) => s.isCurrentTarget)?.laps).toBe(12);
+      expect(result.filter((s) => !s.isCurrentTarget)).toHaveLength(2);
+    });
+
+    it('calculates fuelPerLap as fuelLevel / laps for each scenario', () => {
+      const result = calculateTargetScenarios(30, 12.7);
+      expect(result[0].fuelPerLap).toBeCloseTo(30 / 11, 5); // -1
+      expect(result[1].fuelPerLap).toBeCloseTo(30 / 12, 5); // ideal
+      expect(result[2].fuelPerLap).toBeCloseTo(30 / 13, 5); // +1
+    });
+
+    it('omits the -1 scenario when centre is 1 (would produce laps = 0)', () => {
+      // lapsWithFuel = 1.9 → centre = 1 → -1 scenario would be laps 0, skipped
+      const result = calculateTargetScenarios(5, 1.9);
+      expect(result).toHaveLength(2);
+      expect(result.map((s) => s.laps)).toEqual([1, 2]);
+    });
+
+    it('returns empty array when fuelLevel is 0', () => {
+      expect(calculateTargetScenarios(0, 10)).toHaveLength(0);
+    });
+
+    it('returns empty array when lapsWithFuel is 0 or negative', () => {
+      expect(calculateTargetScenarios(30, 0)).toHaveLength(0);
+      expect(calculateTargetScenarios(30, -5)).toHaveLength(0);
     });
   });
 });

@@ -254,7 +254,7 @@ export const FuelCalculatorConsumptionGrid: React.FC<
   const frozenFuelLevel = displayData?.fuelLevel ?? fuelLevel;
   const pitWindowOpen = frozenPitWindowOpen;
   const pitWindowClose = displayData?.pitWindowClose ?? 0;
-  const hasStrategy = isRace && avg > 0;
+  const hasStrategy = avg > 0;
   const pitWindowStart = Math.ceil(pitWindowOpen);
   const pitWindowEnd = Math.floor(pitWindowClose);
   const pitWindowLabel = !hasStrategy

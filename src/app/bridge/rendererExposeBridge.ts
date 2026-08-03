@@ -8,8 +8,6 @@ import type {
   DashboardProfile,
   SaveDashboardOptions,
   ContainerBoundsInfo,
-  FuelCalculatorBridge,
-  FuelLapData,
   ReferenceLap,
   ReferenceLapBridge,
   KeybindingsBridge,
@@ -225,32 +223,6 @@ export function exposeBridge() {
       return () => ipcRenderer.removeListener('navigateToSettings', handler);
     },
   } as DashboardBridge);
-
-  contextBridge.exposeInMainWorld('fuelCalculatorBridge', {
-    getHistoricalLaps: (trackId: number, carName: string) => {
-      return ipcRenderer.invoke('fuel:getHistoricalLaps', trackId, carName);
-    },
-    saveLap: (trackId: number, carName: string, lap: FuelLapData) => {
-      return ipcRenderer.invoke('fuel:saveLap', trackId, carName, lap);
-    },
-    clearHistory: (trackId: number, carName: string) => {
-      return ipcRenderer.invoke('fuel:clearHistory', trackId, carName);
-    },
-    clearAllHistory: () => {
-      return ipcRenderer.invoke('fuel:clearAllHistory');
-    },
-    getQualifyMax: (trackId: number, carName: string) => {
-      return ipcRenderer.invoke('fuel:getQualifyMax', trackId, carName);
-    },
-    saveQualifyMax: (trackId: number, carName: string, val: number | null) => {
-      return ipcRenderer.invoke('fuel:saveQualifyMax', trackId, carName, val);
-    },
-    startNewLog: () => ipcRenderer.invoke('fuel:startNewLog'),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    logData: (data: any) => {
-      return ipcRenderer.invoke('fuel:logData', data);
-    },
-  } as FuelCalculatorBridge);
 
   contextBridge.exposeInMainWorld('referenceLapsBridge', {
     getReferenceLap: (seriesId: number, trackId: number, classId: number) => {
