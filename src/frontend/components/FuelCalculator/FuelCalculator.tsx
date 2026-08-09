@@ -1,8 +1,8 @@
 import { useMemo } from 'react';
 import {
-  useSessionVisibility,
-  useTelemetryValue,
   useDashboard,
+  useTelemetryValue,
+  useFuelProjectionSnapshot,
 } from '@irdashies/context';
 import { useFuelCalculation } from './useFuelCalculation';
 import {
@@ -74,7 +74,21 @@ export const FuelCalculator = (props: FuelCalculatorProps) => {
 
   const { fuelUnits, safetyMargin } = settings;
 
-  const isSessionVisible = useSessionVisibility(settings.sessionVisibility);
+  const projection = useFuelProjectionSnapshot();
+  const visibilityKey = projection?.sessionType
+    ? {
+        Race: 'race',
+        'Lone Qualify': 'loneQualify',
+        'Open Qualify': 'openQualify',
+        Practice: 'practice',
+        'Offline Testing': 'offlineTesting',
+      }[projection.sessionType]
+    : undefined;
+  const isSessionVisible = visibilityKey
+    ? (settings.sessionVisibility?.[
+        visibilityKey as keyof typeof settings.sessionVisibility
+      ] ?? true)
+    : true;
 
   // Derived Settings based on General linkage
   // Use the full string so compact vs ultra can be distinguished downstream
@@ -150,8 +164,11 @@ export const FuelCalculator = (props: FuelCalculatorProps) => {
     return DEFAULT_FUEL_LAYOUT_TREE;
   }, [settings.layoutTree]);
 
-  const isOnTrack = useTelemetryValue('IsOnTrack');
-  const fuelData = useFuelCalculation(safetyMargin, settings);
+  const telemetryIsOnTrack = useTelemetryValue('IsOnTrack');
+  const isOnTrack = projection?.isOnTrack ?? telemetryIsOnTrack ?? false;
+
+  const calculatedFuelData = useFuelCalculation(safetyMargin, settings);
+  const fuelData = props.previewData ?? calculatedFuelData;
 
   const predictiveUsage = fuelData?.projectedLapUsage || 0;
   const qualifyConsumption = fuelData?.maxQualify || null;

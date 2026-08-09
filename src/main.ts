@@ -1,8 +1,9 @@
-import { app, ipcMain } from 'electron';
+import { app, BrowserWindow, ipcMain } from 'electron';
 import log from './app/logger';
 import {
   iRacingSDKSetup,
   getCurrentBridge,
+  getSessionLifecycle,
 } from './app/bridge/iracingSdk/setup';
 import { getOrCreateDefaultDashboard } from './app/storage/dashboards';
 import { setupTaskbar, KeybindingManager } from './app';
@@ -20,7 +21,6 @@ import { updateElectronApp } from 'update-electron-app';
 // @ts-expect-error no types for squirrel
 import started from 'electron-squirrel-startup';
 import { Analytics } from './app/analytics';
-import { setupReferenceLapsBridge } from './app/bridge/referenceLapsBridge';
 import { setupReferenceFuelBridge } from './app/bridge/referenceFuelBridge';
 import { setupKeybindingsBridge } from './app/bridge/keybindingsBridge';
 import { setupLogBridge } from './app/bridge/logBridge';
@@ -34,7 +34,31 @@ import {
   validateFuelLapFile,
 } from './app/storage/referenceFuel';
 import { setupChromiumFlagsBridge } from './app/bridge/chromiumFlagsBridge';
-import { createPerfDashboard, getPerfRunConfig } from './app/perfRunConfig';
+import {
+  activePerfWidgetTypes,
+  createPerfDashboard,
+  getPerfRunConfig,
+  PERF_CAPTURE_ORIGIN_LOG_PREFIX,
+  PERF_VISIBILITY_LOG_PREFIX,
+} from './app/perfRunConfig';
+import { ChannelBus, setupChannelBridge } from './app/bridge/channelBridge';
+import { connectSessionLifecycleChannel } from './app/bridge/sessionLifecycleChannel';
+import { setupRendererDataSubscriptions } from './app/bridge/rendererDataSubscriptions';
+import { PerfHeapProfiler } from './app/perfHeapProfiler';
+
+const safeErrorDetails = (error: unknown) => {
+  const code =
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    typeof error.code === 'string'
+      ? error.code
+      : undefined;
+  return {
+    name: error instanceof Error ? error.name : 'UnknownError',
+    ...(code ? { code } : {}),
+  };
+};
 
 // Handle creating/removing shortcuts on Windows when installing/uninstalling.
 if (started) app.quit();
@@ -53,6 +77,11 @@ overlayManager.setupAutoStart();
 
 // Hoisted so the quit handler can tear down the WebHID host window cleanly.
 let keybindingManager: KeybindingManager | undefined;
+const channelBus = new ChannelBus({
+  deliveryEnabled: !perfRun.enabled || perfRun.channelDelivery === 'on',
+});
+let disconnectLifecycleChannel: (() => void) | undefined;
+let disposeRendererDataSubscriptions: (() => void) | undefined;
 
 app.on('ready', async () => {
   // Don't start services if we don't have the single instance lock
@@ -63,39 +92,48 @@ app.on('ready', async () => {
 
   if (perfRun.enabled) {
     log.info('[PerfRun] Configuration', perfRun);
-    if (perfRun.durationSeconds > 0) {
-      setTimeout(() => {
-        log.info(
-          `[PerfRun] Completed fixed ${perfRun.durationSeconds}s capture`
-        );
-        app.quit();
-      }, perfRun.durationSeconds * 1000);
-    }
   }
 
-  await iRacingSDKSetup(overlayManager);
+  // Resolve benchmark metadata before metrics reporting starts so every
+  // interval carries the same active-widget workload description.
+  const dashboard = getOrCreateDefaultDashboard();
+  const runDashboard = createPerfDashboard(dashboard, perfRun);
+  if (perfRun.enabled) {
+    process.env.PERF_ACTIVE_WIDGET_TYPES = JSON.stringify(
+      activePerfWidgetTypes(runDashboard)
+    );
+  }
+
+  setupChannelBridge(channelBus);
+  const rendererDataSubscriptions = setupRendererDataSubscriptions();
+  disposeRendererDataSubscriptions = rendererDataSubscriptions.dispose;
+  overlayManager.setRendererDataSubscriptions(
+    rendererDataSubscriptions.registry
+  );
+  disconnectLifecycleChannel = connectSessionLifecycleChannel(
+    getSessionLifecycle(),
+    channelBus
+  );
+  await iRacingSDKSetup(overlayManager, channelBus);
 
   // Perform one-time cleanup of old reference laps
   validateReferenceLapFile();
   validateFuelLapFile();
 
-  const dashboard = getOrCreateDefaultDashboard();
   const bridge = getCurrentBridge();
 
   // Setup IPC bridges
   setupLogBridge();
   setupPitLaneBridge();
-  setupReferenceLapsBridge();
   setupReferenceFuelBridge();
   setupPersonalBestLapTimesBridge();
   setupChromiumFlagsBridge();
 
   // Start component server for browser components
-  await startComponentServer(bridge, dashboardBridge);
+  await startComponentServer(bridge, dashboardBridge, channelBus);
 
   ipcMain.handle('getComponentServerPort', () => getComponentServerPort());
 
-  const runDashboard = createPerfDashboard(dashboard, perfRun);
   if (!perfRun.enabled || perfRun.overlayMode !== 'observer') {
     // Empty mode keeps the normal overlay window count/bounds while the
     // renderer receives a dashboard with every widget disabled. This isolates
@@ -106,6 +144,82 @@ app.on('ready', async () => {
         : runDashboard;
     overlayManager.createOverlays(windowDashboard, {
       createSettingsWindow: !perfRun.enabled,
+    });
+  }
+
+  if (perfRun.enabled) {
+    const captureOriginMs = Date.now();
+    const captureOrigin = new Date(captureOriginMs).toISOString();
+    log.info(
+      `${PERF_CAPTURE_ORIGIN_LOG_PREFIX}${JSON.stringify({
+        timestamp: captureOrigin,
+        runId: process.env.PERF_RUN_ID ?? 'manual',
+      })}`
+    );
+    const heapProfilePath = process.env.PERF_HEAP_PROFILE_PATH;
+    if (heapProfilePath && perfRun.durationSeconds <= 0) {
+      log.error(
+        `[PerfRun] PERF_HEAP_PROFILE_PATH requires a fixed capture duration`
+      );
+      app.quit();
+      return;
+    }
+    let heapProfiler: PerfHeapProfiler | undefined;
+    if (heapProfilePath) {
+      try {
+        heapProfiler = new PerfHeapProfiler(heapProfilePath);
+        await heapProfiler.start();
+        log.info(`[PerfRun] Main-process heap sampling started`);
+      } catch (error) {
+        heapProfiler = undefined;
+        log.error(
+          `[PerfRun] Main-process heap sampling failed`,
+          safeErrorDetails(error)
+        );
+      }
+    }
+    if (perfRun.durationSeconds > 0) {
+      setTimeout(async () => {
+        try {
+          if (heapProfiler) {
+            await heapProfiler.stop();
+            log.info(`[PerfRun] Main-process heap profile written`);
+          }
+        } catch (error) {
+          log.error(
+            `[PerfRun] Main-process heap profile export failed`,
+            safeErrorDetails(error)
+          );
+        } finally {
+          log.info(
+            `[PerfRun] Completed fixed ${perfRun.durationSeconds}s capture`
+          );
+          app.quit();
+        }
+      }, perfRun.durationSeconds * 1000);
+    }
+
+    let phaseStartSeconds = 0;
+    perfRun.visibilityPhases.forEach((phase, index) => {
+      const applyPhase = () => {
+        for (const window of BrowserWindow.getAllWindows()) {
+          if (window.isDestroyed()) continue;
+          if (phase.visibility === 'hidden') window.hide();
+          else window.showInactive();
+        }
+        log.info(
+          `${PERF_VISIBILITY_LOG_PREFIX}${JSON.stringify({
+            timestamp: index === 0 ? captureOrigin : new Date().toISOString(),
+            runId: process.env.PERF_RUN_ID ?? 'manual',
+            index,
+            visibility: phase.visibility,
+            durationSeconds: phase.durationSeconds,
+          })}`
+        );
+      };
+      if (index === 0) applyPhase();
+      else setTimeout(applyPhase, phaseStartSeconds * 1000);
+      phaseStartSeconds += phase.durationSeconds;
     });
   }
 
@@ -145,6 +259,9 @@ app.on('quit', () => {
 app.on('before-quit', () => {
   overlayManager.markQuitting();
   keybindingManager?.stopGamepad();
+  disconnectLifecycleChannel?.();
+  disposeRendererDataSubscriptions?.();
+  channelBus.dispose();
   // Synchronous flush so any pending debounced reference-lap write completes
   // before the process exits.
   flushReferenceLapsOnShutdown();

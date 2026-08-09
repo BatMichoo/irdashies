@@ -2,12 +2,9 @@
 import { createRoot } from 'react-dom/client';
 import { HashRouter, Route, Routes } from 'react-router-dom';
 import {
-  TelemetryProvider,
   DashboardProvider,
   RunningStateProvider,
   SessionProvider,
-  PitLaneProvider,
-  ReferenceStoreProvider,
   ReferenceFuelStoreProvider,
 } from '@irdashies/context';
 import { Settings } from './components/Settings/Settings';
@@ -16,6 +13,7 @@ import { HideUIWrapper } from './components/HideUIWrapper/HideUIWrapper';
 import { ProfileSwitchOverlay } from './components/ProfileSwitchOverlay/ProfileSwitchOverlay';
 import { OverlayContainer } from './components/OverlayContainer';
 import { ErrorBoundary } from './components/ErrorBoundary/ErrorBoundary';
+import { RendererDataProviders } from './components/RendererDataProviders/RendererDataProviders';
 
 /**
  * Check if this window is the settings window based on URL hash
@@ -72,10 +70,7 @@ const App = () => {
     <ErrorBoundary label="overlay" resetAfterMs={2000}>
       <DashboardProvider bridge={window.dashboardBridge}>
         <RunningStateProvider bridge={window.irsdkBridge}>
-          <SessionProvider bridge={window.irsdkBridge} />
-          <TelemetryProvider bridge={window.irsdkBridge} />
-          <PitLaneProvider bridge={window.pitLaneBridge} />
-          <ReferenceStoreProvider bridge={window.referenceLapsBridge} />
+          <RendererDataProviders />
           <ReferenceFuelStoreProvider bridge={window.referenceFuelBridge} />
           <OverlayApp />
         </RunningStateProvider>

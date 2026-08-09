@@ -12,10 +12,8 @@ import { ErrorBoundary } from '../ErrorBoundary/ErrorBoundary';
 import { SectorTimingUpdater } from './SectorTimingUpdater';
 import { PushToPassUpdater } from './PushToPassUpdater';
 import { PitLapUpdater } from './PitLapUpdater';
-import { TopSpeedUpdater } from './TopSpeedUpdater';
 import { SessionTimingUpdater } from './SessionTimingUpdater';
-import { TrackTemperatureUpdater } from './TrackTemperatureUpdater';
-import { SessionBestLapUpdater } from './SessionBestLapUpdater';
+import { WidgetRuntimeProvider } from '../../widgetRuntime';
 
 export const OverlayContainer = memo(() => {
   const {
@@ -160,13 +158,14 @@ export const OverlayContainer = memo(() => {
         editMode ? 'bg-blue-900/20' : '',
       ].join(' ')}
     >
-      <SectorTimingUpdater />
+      <SectorTimingUpdater
+        enabled={widgetsForThisDisplay.some((widget) =>
+          ['sectordelta', 'map', 'flatmap'].includes(widget.type || widget.id)
+        )}
+      />
       <PushToPassUpdater />
       <PitLapUpdater />
-      <TopSpeedUpdater />
       <SessionTimingUpdater />
-      <TrackTemperatureUpdater />
-      <SessionBestLapUpdater />
       {widgetsForThisDisplay.map((widget, index) => {
         // Transiently hidden via a per-widget hotkey — skip rendering.
         if (hiddenWidgetIds.has(widget.id)) {
@@ -194,7 +193,9 @@ export const OverlayContainer = memo(() => {
                 label={`widget:${widget.type || widget.id}`}
                 resetAfterMs={2000}
               >
-                <WidgetComponent {...widget.config} />
+                <WidgetRuntimeProvider widgetType={widget.type || widget.id}>
+                  <WidgetComponent {...widget.config} />
+                </WidgetRuntimeProvider>
               </ErrorBoundary>
             ) : null}
           </WidgetContainer>

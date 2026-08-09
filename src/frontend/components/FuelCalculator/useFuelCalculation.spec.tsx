@@ -65,13 +65,8 @@ describe('useFuelCalculation hook', () => {
     });
 
     useReferenceLapStore.setState({
-      activeLaps: new Map(),
       bestLaps: new Map(),
       persistedLaps: new Map(),
-      trackId: null,
-      trackLength: null,
-      interval: 0,
-      pointsCount: 0,
     });
   });
 
@@ -450,8 +445,8 @@ describe('useFuelCalculation hook', () => {
 
     const { result } = renderHook(() => useFuelCalculation(0.0));
 
-    // When activeLap is not clean (isCleanLap: false), projection falls back to maxLap reference consumption.
-    expect(result.current?.projectedLapUsage).toBe(4.0);
+    // Active lap consumption is included even when dirty (e.g., pit entry), combining live usage so far (1.0L) with remaining reference usage (2.0L)
+    expect(result.current?.projectedLapUsage).toBe(3.0);
   });
 
   // Future feature specifications (Not yet implemented)

@@ -108,7 +108,6 @@ export function useFuelCalculation(
   let remainingFuelCurrentLap: number;
   if (
     activeLap &&
-    activeLap.isCleanLap &&
     activeLap.startFuel > 0 &&
     fuelLevel <= activeLap.startFuel
   ) {

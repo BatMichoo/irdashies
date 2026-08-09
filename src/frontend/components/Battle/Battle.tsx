@@ -1,4 +1,6 @@
 import { memo, useMemo } from 'react';
+import { resolveSpeedUnit, speedFromKph } from '@irdashies/utils/units';
+import type { SpeedUnit } from '@irdashies/utils/units';
 import {
   useDrivingState,
   useSessionVisibility,
@@ -10,16 +12,19 @@ import {
   useBattleGapSnapshot,
   useWeekendInfoNumCarClasses,
   useCarIdxSpeed,
-  useTelemetryValue,
+  useTrackStateSnapshot,
   useSessionStore,
 } from '@irdashies/context';
 import { formatTime } from '@irdashies/utils/time';
 import { getTailwindStyle } from '@irdashies/utils/colors';
 import { useBattleSettings } from './hooks/useBattleSettings';
-import { useHighlightColor, useDriverRelatives } from '../Standings/hooks';
-import { useDriverStandings } from '../Standings/hooks/useDriverPositions';
-import { useDriverLivePositions } from '../Standings/hooks/useDriverLivePositions';
-import type { Standings } from '../Standings/createStandings';
+import {
+  useHighlightColor,
+  useDriverRelatives,
+  useDriverStandings,
+  useDriverLivePositions,
+  type Standings,
+} from '@irdashies/domain';
 
 // Format an absolute gap value for display
 const formatGap = (gap: number | null | undefined, dp: number): string => {
@@ -87,7 +92,7 @@ interface BattleRowProps {
   stintLaps?: number;
   lastTimeFormat?: import('@irdashies/types').TimeFormat;
   speedKph?: number;
-  isMetricSpeed?: boolean;
+  speedUnit?: SpeedUnit;
   rowIndex: number;
 }
 
@@ -107,7 +112,7 @@ const BattleRow = memo(
     stintLaps,
     lastTimeFormat = 'mixed',
     speedKph,
-    isMetricSpeed = true,
+    speedUnit = 'km/h',
     rowIndex,
   }: BattleRowProps) => {
     const onTrack = entry?.onTrack ?? true;
@@ -216,7 +221,7 @@ const BattleRow = memo(
       } else if (key === 'speed' && settings?.speed?.enabled) {
         const displaySpeed =
           speedKph != null && speedKph > 0
-            ? Math.round(isMetricSpeed ? speedKph : speedKph / 1.60934)
+            ? Math.round(speedFromKph(speedKph, speedUnit))
             : null;
         cols.push(
           <td
@@ -288,7 +293,7 @@ export const Battle = () => {
   // This is what makes mid-lap overtakes appear immediately in the widget.
   const liveClassPositions = useDriverLivePositions({ enabled: true });
 
-  // useDriverRelatives provides live (60fps, reference-lap interpolated) gap timing.
+  // useDriverRelatives provides live 5 Hz, reference-lap-interpolated gap timing.
   // Use a large buffer so the entire field is included with live deltas attached —
   // we look up the position-neighbours by carIdx, so they must always be present
   // regardless of physical track proximity.
@@ -304,11 +309,13 @@ export const Battle = () => {
   const gapSnapshot = useBattleGapSnapshot();
 
   // Build a carIdx → live delta map from relatives for O(1) lookups.
-  // Updates every frame as relatives recomputes from telemetry.
+  // Updates when the relative-gaps channel publishes.
   const relativeDeltaMap = useMemo(() => {
     const map = new Map<number, number>();
     for (const r of relatives) {
-      if (r.delta != null) map.set(r.carIdx, r.delta);
+      if (r.delta != null && Number.isFinite(r.delta)) {
+        map.set(r.carIdx, r.delta);
+      }
     }
     return map;
   }, [relatives]);
@@ -384,11 +391,12 @@ export const Battle = () => {
   useBattleGapStoreUpdater({ liveGapAhead, liveGapBehind });
 
   // Speed: derived from CarIdxLapDistPct movement, in km/h.
-  const carSpeeds = useCarIdxSpeed();
-  const displayUnits = useTelemetryValue('DisplayUnits'); // 0 = imperial, 1 = metric
-  const speedUnit = settings?.speed?.unit ?? 'auto';
-  const isMetricSpeed =
-    speedUnit === 'auto' ? displayUnits === 1 : speedUnit === 'km/h';
+  const carSpeeds = useCarIdxSpeed(settings?.speed?.enabled ?? false);
+  const displayUnits = useTrackStateSnapshot()?.displayUnits;
+  const resolvedSpeedUnit = resolveSpeedUnit(
+    settings?.speed?.unit,
+    displayUnits
+  );
 
   const stintLaps = (carIdx: number) => {
     const currentLap = carLaps?.[carIdx] ?? 0;
@@ -449,7 +457,7 @@ export const Battle = () => {
             speedKph={
               aheadEntry != null ? carSpeeds[aheadEntry.carIdx] : undefined
             }
-            isMetricSpeed={isMetricSpeed}
+            speedUnit={resolvedSpeedUnit}
             rowIndex={0}
           />
           <BattleRow
@@ -468,7 +476,7 @@ export const Battle = () => {
             speedKph={
               playerEntry != null ? carSpeeds[playerEntry.carIdx] : undefined
             }
-            isMetricSpeed={isMetricSpeed}
+            speedUnit={resolvedSpeedUnit}
             rowIndex={1}
           />
           <BattleRow
@@ -496,7 +504,7 @@ export const Battle = () => {
             speedKph={
               behindEntry != null ? carSpeeds[behindEntry.carIdx] : undefined
             }
-            isMetricSpeed={isMetricSpeed}
+            speedUnit={resolvedSpeedUnit}
             rowIndex={2}
           />
         </tbody>
