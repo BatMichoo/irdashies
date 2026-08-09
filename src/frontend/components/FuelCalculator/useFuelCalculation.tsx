@@ -99,13 +99,11 @@ export function useFuelCalculation(
   const referenceLap =
     maxLap && maxLap.startFuel > 0
       ? maxLap
-      : minLap && minLap.startFuel > 0
-        ? minLap
-        : lastCompletedLap && lastCompletedLap.startFuel > 0
-          ? lastCompletedLap
-          : persistedLap && persistedLap.startFuel > 0
-            ? persistedLap
-            : null;
+      : lastCompletedLap && lastCompletedLap.startFuel > 0
+        ? lastCompletedLap
+        : persistedLap && persistedLap.startFuel > 0
+          ? persistedLap
+          : null;
 
   let remainingFuelCurrentLap: number;
   if (

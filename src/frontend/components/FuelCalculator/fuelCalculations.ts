@@ -402,10 +402,7 @@ export function calculateProjectedLapUsage(
   }
 
   const isActiveLapValid =
-    activeLap &&
-    activeLap.isCleanLap &&
-    activeLap.startFuel > 0 &&
-    fuelLevel <= activeLap.startFuel;
+    activeLap && activeLap.startFuel > 0 && fuelLevel <= activeLap.startFuel;
 
   // 1. Fuel consumed so far on the current lap
   const fuelConsumedSoFar = isActiveLapValid
